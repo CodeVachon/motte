@@ -159,7 +159,16 @@ function parseNotes(body: string, filePath?: string): Note[] {
     return notes;
 }
 
-export function parseIssueFile(text: string, filePath?: string): Issue {
+/**
+ * Split the frontmatter off the body and validate it.
+ *
+ * The single implementation behind both `parseFrontmatter` and `parseIssueFile`, so the two can
+ * never disagree about what a valid header is.
+ */
+function splitFrontmatter(
+    text: string,
+    filePath?: string
+): { frontmatter: Frontmatter; body: string } {
     const fence = FRONTMATTER_FENCE.exec(text);
     if (!fence) {
         throw new IssueParseError("missing YAML frontmatter delimited by `---`", filePath);
@@ -185,7 +194,23 @@ export function parseIssueFile(text: string, filePath?: string): Issue {
         throw new IssueParseError(`invalid frontmatter — ${detail}`, filePath);
     }
 
-    const body = text.slice(fence[0].length);
+    return { frontmatter: parsed.data, body: text.slice(fence[0].length) };
+}
+
+/**
+ * Parse just the frontmatter, doing no work on the body.
+ *
+ * `text` need only reach the closing `---` fence, which is what lets callers read a bounded chunk of
+ * a file rather than all of it. Cost is independent of body size — that is the property the
+ * completion path depends on, and there is a test pinning it.
+ */
+export function parseFrontmatter(text: string, filePath?: string): Frontmatter {
+    return splitFrontmatter(text, filePath).frontmatter;
+}
+
+export function parseIssueFile(text: string, filePath?: string): Issue {
+    const { frontmatter, body } = splitFrontmatter(text, filePath);
+    const parsed = { data: frontmatter };
     const { preamble, sections } = splitSections(body);
 
     let description = "";

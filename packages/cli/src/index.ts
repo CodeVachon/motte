@@ -40,7 +40,21 @@ const EXPECTED_ERRORS = [
     IssueParseError
 ];
 
+/**
+ * `motte status | head` closes the pipe as soon as it has what it wants. That is normal shell
+ * behaviour, not a failure, so it exits quietly with 0 rather than reporting a broken pipe.
+ */
+function isBrokenPipe(thrown: unknown): boolean {
+    return (
+        typeof thrown === "object" &&
+        thrown !== null &&
+        (thrown as { code?: string }).code === "EPIPE"
+    );
+}
+
 function report(thrown: unknown): never {
+    if (isBrokenPipe(thrown)) process.exit(0);
+
     if (EXPECTED_ERRORS.some((type) => thrown instanceof type)) {
         process.stderr.write(`${error((thrown as Error).message)}\n`);
         process.exit(1);
@@ -59,6 +73,15 @@ function report(thrown: unknown): never {
 }
 
 export async function run(argv: string[] = hideBin(process.argv)): Promise<void> {
+    // A closed pipe can surface either as a thrown write (handled in `report`) or as a stream error
+    // event, depending on where in the write the reader went away. Both have to be swallowed.
+    for (const stream of [process.stdout, process.stderr]) {
+        stream.on("error", (thrown: unknown) => {
+            if (isBrokenPipe(thrown)) process.exit(0);
+            throw thrown;
+        });
+    }
+
     const cli = yargs(argv)
         .scriptName("motte")
         .usage("$0 <command> [options]")

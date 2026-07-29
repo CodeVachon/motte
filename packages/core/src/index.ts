@@ -32,7 +32,20 @@ export {
     type DependencyProblem
 } from "./deps.js";
 
-export { formatIssueFile, formatNote, IssueParseError, parseIssueFile } from "./serialize.js";
+export {
+    formatIssueFile,
+    formatNote,
+    IssueParseError,
+    parseFrontmatter,
+    parseIssueFile
+} from "./serialize.js";
+
+export {
+    FRONTMATTER_CHUNK_BYTES,
+    readFrontmatter,
+    readIssueRef,
+    type IssueRef
+} from "./frontmatter.js";
 
 export { idFromFilename, ID_PAD, issueFilename, padId, slugify } from "./slug.js";
 

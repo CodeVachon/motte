@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
 import { resolveState, type Config } from "./config.js";
 import { blocked, blocks, findDependencyCycle, openBlockers, ready } from "./deps.js";
+import { readIssueRef, type IssueRef } from "./frontmatter.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
 import { issueFilename } from "./slug.js";
 import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
@@ -132,6 +133,41 @@ export class IssueStore {
     brokenFiles(): BrokenFile[] {
         this.all();
         return [...this.broken];
+    }
+
+    /**
+     * Headers only — id, title, state, assignee, labels, blockers — without touching any body.
+     *
+     * For latency-sensitive reads like tab completion, which fires on every keystroke and needs
+     * nothing below the frontmatter. Reads a bounded chunk per file instead of the whole thing.
+     *
+     * Already-parsed issues come from the cache rather than being re-read, so this is never slower
+     * than what is already in memory. Unparseable files are skipped silently: completion must never
+     * spill an error into the user's shell, and `motte doctor` is where problems get reported.
+     */
+    refs(): IssueRef[] {
+        if (!existsSync(this.config.issuesPath)) return [];
+
+        const refs: IssueRef[] = [];
+
+        for (const name of readdirSync(this.config.issuesPath).sort()) {
+            if (!name.endsWith(".md")) continue;
+            const filePath = join(this.config.issuesPath, name);
+
+            try {
+                const cached = this.cache.get(filePath);
+                if (cached && cached.mtimeMs === statSync(filePath).mtimeMs) {
+                    refs.push({ ...cached.issue, filePath });
+                    continue;
+                }
+
+                refs.push(readIssueRef(filePath));
+            } catch {
+                // Skipped by design — see the note above.
+            }
+        }
+
+        return refs.sort((a, b) => a.id - b.id);
     }
 
     get(id: number): Issue | undefined {

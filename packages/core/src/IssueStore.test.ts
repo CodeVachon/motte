@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -208,6 +208,111 @@ describe("IssueStore", () => {
 
             expect(cleared.labels).toBeUndefined();
             expect(readFileSync(cleared.filePath!, "utf8")).not.toContain("labels");
+        });
+    });
+
+    describe("refs — headers only", () => {
+        it("returns every header field, sorted by id", () => {
+            store.create({ title: "Second" });
+            store.create({ title: "First", labels: ["core"], assignee: "atlas" });
+
+            const refs = store.refs();
+
+            expect(refs.map((ref) => ref.id)).toEqual([1, 2]);
+            expect(refs[1]!.assignee).toBe("atlas");
+            expect(refs[1]!.labels).toEqual(["core"]);
+            expect(refs[0]!.filePath).toMatch(/0001-second\.md$/);
+        });
+
+        it("agrees with all() on every header field", () => {
+            store.create({ title: "Parent" });
+            store.create({ title: "Child", parent: 1, labels: ["a", "b"], assignee: "chris" });
+            store.block(2, 1);
+
+            const refs = new IssueStore(config).refs();
+            const issues = new IssueStore(config).all();
+
+            for (const issue of issues) {
+                const ref = refs.find((candidate) => candidate.id === issue.id)!;
+                expect(ref.title).toBe(issue.title);
+                expect(ref.state).toBe(issue.state);
+                expect(ref.parent).toBe(issue.parent);
+                expect(ref.assignee).toBe(issue.assignee);
+                expect(ref.labels).toEqual(issue.labels);
+                expect(ref.blockedBy).toEqual(issue.blockedBy);
+            }
+        });
+
+        it("skips an unparseable file silently rather than throwing", () => {
+            store.create({ title: "Good" });
+            writeFileSync(join(config.issuesPath, "0099-bad.md"), "not an issue\n", "utf8");
+
+            // Completion runs on every TAB — it must never spill an error into the shell.
+            expect(() => store.refs()).not.toThrow();
+            expect(store.refs().map((ref) => ref.id)).toEqual([1]);
+        });
+
+        it("ignores files that are not markdown", () => {
+            store.create({ title: "Good" });
+            writeFileSync(join(config.issuesPath, "notes.txt"), "ignore\n", "utf8");
+
+            expect(store.refs()).toHaveLength(1);
+        });
+
+        it("returns nothing when the issues directory does not exist", () => {
+            const empty = project();
+            rmSync(empty.issuesPath, { recursive: true, force: true });
+
+            expect(new IssueStore(empty).refs()).toEqual([]);
+        });
+
+        it("reuses an already-parsed issue instead of re-reading the file", () => {
+            const created = store.create({ title: "Cached", description: "Body." });
+
+            // Pin the mtime to a whole second so it can be restored exactly. statSync exposes
+            // sub-millisecond precision that utimesSync cannot round-trip from a Date.
+            const pinned = new Date(Math.floor(Date.now() / 1000) * 1000);
+            utimesSync(created.filePath!, pinned, pinned);
+
+            store.all();
+            expect(statSync(created.filePath!).mtimeMs).toBe(pinned.getTime());
+
+            // Rewrite the file, then restore the mtime so the cache still considers itself valid.
+            // A refs() that re-read the file would say "Rewritten"; one honouring the cache returns
+            // the parse it already holds.
+            writeFileSync(
+                created.filePath!,
+                readFileSync(created.filePath!, "utf8").replace(
+                    "title: Cached",
+                    "title: Rewritten"
+                ),
+                "utf8"
+            );
+            utimesSync(created.filePath!, pinned, pinned);
+
+            expect(store.refs()[0]!.title).toBe("Cached");
+        });
+
+        it("sees a change made on disk behind its back", () => {
+            const created = store.create({ title: "Before" });
+            expect(store.refs()[0]!.title).toBe("Before");
+
+            const raw = readFileSync(created.filePath!, "utf8").replace(
+                "title: Before",
+                "title: After"
+            );
+            rmSync(created.filePath!);
+            writeFileSync(created.filePath!, raw, "utf8");
+
+            expect(new IssueStore(config).refs()[0]!.title).toBe("After");
+        });
+
+        it("does not care how large the bodies are", () => {
+            const created = store.create({ title: "Fat" });
+            const raw = readFileSync(created.filePath!, "utf8");
+            writeFileSync(created.filePath!, `${raw}\n${"x".repeat(200_000)}\n`, "utf8");
+
+            expect(store.refs()[0]!.title).toBe("Fat");
         });
     });
 
