@@ -11,6 +11,7 @@ import {
 import { join } from "node:path";
 import { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
 import { resolveState, type Config } from "./config.js";
+import { blocked, blocks, findDependencyCycle, openBlockers, ready } from "./deps.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
 import { issueFilename } from "./slug.js";
 import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
@@ -39,6 +40,16 @@ export class CycleError extends Error {
     constructor(readonly path: number[]) {
         super(`that would create a cycle: ${path.map((id) => `#${id}`).join(" → ")}`);
         this.name = "CycleError";
+    }
+}
+
+export class DependencyCycleError extends Error {
+    constructor(readonly path: number[]) {
+        super(
+            `that would create a dependency cycle, so nothing in it could ever be ready: ` +
+                path.map((id) => `#${id}`).join(" → ")
+        );
+        this.name = "DependencyCycleError";
     }
 }
 
@@ -178,6 +189,7 @@ export class IssueStore {
                 : resolveState(this.config, input.state).name;
 
         if (input.parent !== undefined) this.require(input.parent);
+        for (const blocker of input.blockedBy ?? []) this.require(blocker);
 
         const now = timestamp();
         const issue: Issue = {
@@ -189,6 +201,9 @@ export class IssueStore {
             ...(input.labels === undefined || input.labels.length === 0
                 ? {}
                 : { labels: input.labels }),
+            ...(input.blockedBy === undefined || input.blockedBy.length === 0
+                ? {}
+                : { blockedBy: input.blockedBy }),
             created: now,
             updated: now,
             description: (input.description ?? "").trim(),
@@ -227,6 +242,16 @@ export class IssueStore {
         if (patch.assignee !== undefined) {
             if (patch.assignee === null) delete next.assignee;
             else next.assignee = patch.assignee.trim();
+        }
+
+        if (patch.blockedBy !== undefined) {
+            if (patch.blockedBy.length === 0) {
+                delete next.blockedBy;
+            } else {
+                for (const blocker of patch.blockedBy) this.require(blocker);
+                this.assertNoDependencyCycle(id, patch.blockedBy);
+                next.blockedBy = patch.blockedBy;
+            }
         }
 
         if (patch.parent !== undefined) {
@@ -270,6 +295,44 @@ export class IssueStore {
         return this.update(id, { assignee });
     }
 
+    /** Add a blocker. Idempotent — blocking twice on the same issue is not an error. */
+    block(id: number, blocker: number): Issue {
+        const existing = this.require(id);
+        const current = existing.blockedBy ?? [];
+        if (current.includes(blocker)) return existing;
+
+        return this.update(id, { blockedBy: [...current, blocker] });
+    }
+
+    /** Remove a blocker. Idempotent — unblocking something that was not blocking is not an error. */
+    unblock(id: number, blocker: number): Issue {
+        const existing = this.require(id);
+        const current = existing.blockedBy ?? [];
+        if (!current.includes(blocker)) return existing;
+
+        return this.update(id, { blockedBy: current.filter((candidate) => candidate !== blocker) });
+    }
+
+    /** Issues that name `id` as a blocker — the derived inverse of `blockedBy`. */
+    blocks(id: number): Issue[] {
+        return blocks(this.all(), id);
+    }
+
+    /** Not settled, and nothing standing in the way. */
+    ready(): Issue[] {
+        return ready(this.config, this.all());
+    }
+
+    /** Not settled, and waiting on at least one unsettled blocker. */
+    blocked(): Issue[] {
+        return blocked(this.config, this.all());
+    }
+
+    openBlockers(id: number): Issue[] {
+        const issues = this.all();
+        return openBlockers(this.config, issues, this.require(id));
+    }
+
     addNote(id: number, body: string, author: AuthorOptions | Author = {}): Issue {
         const existing = this.require(id);
         const resolved: Author =
@@ -297,6 +360,16 @@ export class IssueStore {
     }
 
     // --------------------------------------------------------------- internals
+
+    private assertNoDependencyCycle(id: number, blockedBy: number[]): void {
+        const issues = this.all();
+        const hypothetical = issues.map((issue) =>
+            issue.id === id ? { ...issue, blockedBy } : issue
+        );
+
+        const cycle = findDependencyCycle(hypothetical, id);
+        if (cycle !== undefined) throw new DependencyCycleError(cycle);
+    }
 
     private assertNoCycle(id: number, parent: number): void {
         if (id === parent) throw new CycleError([id, id]);

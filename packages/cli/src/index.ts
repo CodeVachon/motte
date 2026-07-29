@@ -4,9 +4,11 @@ import {
     AmbiguousRefError,
     ConfigError,
     CycleError,
+    DependencyCycleError,
     IssueNotFoundError,
     IssueParseError
 } from "@motte/core";
+import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { initCommand } from "./commands/init.js";
 import { listCommand } from "./commands/list.js";
@@ -31,6 +33,7 @@ const EXPECTED_ERRORS = [
     AmbiguousRefError,
     ConfigError,
     CycleError,
+    DependencyCycleError,
     IssueNotFoundError,
     IssueParseError
 ];
@@ -66,6 +69,9 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(moveCommand)
         .command(assignCommand)
         .command(noteCommand)
+        .command(blockCommand)
+        .command(unblockCommand)
+        .command(readyCommand)
         .command(statusCommand)
         .command(treeCommand)
         .command(doctorCommand)

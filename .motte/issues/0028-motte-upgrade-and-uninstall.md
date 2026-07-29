@@ -4,8 +4,9 @@ title: motte upgrade and uninstall
 state: Todo
 parent: 4
 labels: [dist, cli]
+blockedBy: [27]
 created: 2026-07-29T11:50:00Z
-updated: 2026-07-29T11:50:00Z
+updated: 2026-07-29T19:04:43Z
 ---
 
 ## Description

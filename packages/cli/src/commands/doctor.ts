@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { buildTree, idFromFilename, stateCategory } from "@motte/core";
+import { buildTree, dependencyProblems, idFromFilename, stateCategory } from "@motte/core";
 import { basename } from "node:path";
 import { context, emitJson } from "../context.js";
 import { dim, error, ok, warn } from "../ui/format.js";
@@ -39,6 +39,16 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
         for (const problem of treeProblems) {
             problems.push({
                 severity: "error",
+                kind: problem.kind,
+                message: problem.message,
+                file: problem.issues[0]?.filePath
+            });
+        }
+
+        for (const problem of dependencyProblems(config, issues)) {
+            problems.push({
+                // Working on something still blocked is the author's call, not a broken file.
+                severity: problem.kind === "started-while-blocked" ? "warning" : "error",
                 kind: problem.kind,
                 message: problem.message,
                 file: problem.issues[0]?.filePath

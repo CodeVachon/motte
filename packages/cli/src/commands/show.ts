@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs";
-import { subtreeReport } from "@motte/core";
+import { blocks, isReady, openBlockers, subtreeReport } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
-import { dim, heading, issueLine, paintId, paintState, progressLine } from "../ui/format.js";
+import { dim, heading, issueLine, paintId, paintState, progressLine, warn } from "../ui/format.js";
 
 interface ShowArgs {
     ref: string;
@@ -22,14 +22,25 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
     handler: (args) => {
         const { config, store } = context();
         const issue = store.resolve(args.ref);
+        const all = store.all();
         const children = store.children(issue.id);
 
         if (args.json === true) {
             emitJson({
                 ...issueJson(issue),
+                ready: isReady(config, all, issue),
+                openBlockers: openBlockers(config, all, issue).map((blocker) => ({
+                    id: blocker.id,
+                    title: blocker.title,
+                    state: blocker.state
+                })),
+                blocks: blocks(all, issue.id).map((blocked) => ({
+                    id: blocked.id,
+                    title: blocked.title,
+                    state: blocked.state
+                })),
                 children: children.map((child) => issueJson(child)),
-                progress:
-                    children.length === 0 ? null : subtreeReport(config, store.all(), issue.id)
+                progress: children.length === 0 ? null : subtreeReport(config, all, issue.id)
             });
             return;
         }
@@ -38,7 +49,11 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
 
         out.write(`\n${paintId(issue.id)} ${heading(issue.title)}\n`);
 
+        const waiting = openBlockers(config, all, issue);
+        const blocking = blocks(all, issue.id);
+
         const meta = [paintState(config, issue.state)];
+        if (waiting.length > 0) meta.push(warn(`blocked`));
         if (issue.parent !== undefined) meta.push(dim(`parent ${paintId(issue.parent)}`));
         if (issue.assignee !== undefined) meta.push(`@${issue.assignee}`);
         if (issue.labels !== undefined && issue.labels.length > 0) {
@@ -46,6 +61,16 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
         }
         out.write(`${meta.join(dim("  ·  "))}\n`);
         out.write(`${dim(`created ${issue.created}   updated ${issue.updated}`)}\n`);
+
+        if (waiting.length > 0) {
+            out.write(`\n${heading("Waiting on")}\n\n`);
+            for (const blocker of waiting) out.write(`${issueLine(config, blocker)}\n`);
+        }
+
+        if (blocking.length > 0) {
+            out.write(`\n${heading("Blocking")}\n\n`);
+            for (const dependent of blocking) out.write(`${issueLine(config, dependent)}\n`);
+        }
 
         if (issue.description.length > 0) {
             out.write(`\n${heading("Description")}\n\n${issue.description}\n`);

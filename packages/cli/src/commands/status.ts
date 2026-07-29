@@ -1,5 +1,14 @@
 import type { CommandModule } from "yargs";
-import { buildTree, epicReports, flattenTree, projectReport, progressBar } from "@motte/core";
+import {
+    blocked,
+    buildTree,
+    epicReports,
+    flattenTree,
+    openBlockers,
+    projectReport,
+    progressBar,
+    ready
+} from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import {
     dim,
@@ -39,6 +48,8 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
                 unstarted: report.unstarted,
                 cancelled: report.cancelled,
                 byState: report.byState,
+                ready: ready(config, issues).map(issueJson),
+                blocked: blocked(config, issues).map(issueJson),
                 inProgress: report.inProgress.map(issueJson),
                 epics: epicReports(config, issues).map((epic) => ({
                     id: epic.issue.id,
@@ -62,9 +73,25 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
             out.write(`  ${paintState(config, entry.state)}${padding}  ${entry.count}\n`);
         }
 
+        const readyIssues = ready(config, issues);
+        const blockedIssues = blocked(config, issues);
+
+        if (readyIssues.length > 0 || blockedIssues.length > 0) {
+            out.write(
+                `\n  ${dim("ready")} ${readyIssues.length}   ${dim("blocked")} ${blockedIssues.length}\n`
+            );
+        }
+
         if (report.inProgress.length > 0) {
             out.write(`\n${heading("In flight")}\n\n`);
-            for (const issue of report.inProgress) out.write(`${issueLine(config, issue)}\n`);
+            for (const issue of report.inProgress) {
+                out.write(`${issueLine(config, issue)}\n`);
+                for (const blocker of openBlockers(config, issues, issue)) {
+                    out.write(
+                        `      ${dim("waiting on")} ${paintId(blocker.id)} ${dim(blocker.title)}\n`
+                    );
+                }
+            }
         }
 
         if (args.epics === true) {

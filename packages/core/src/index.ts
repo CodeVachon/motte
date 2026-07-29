@@ -12,10 +12,25 @@ export {
 export {
     AmbiguousRefError,
     CycleError,
+    DependencyCycleError,
     IssueNotFoundError,
     IssueStore,
     type BrokenFile
 } from "./IssueStore.js";
+
+export {
+    blocked,
+    blocks,
+    cycleIfBlocked,
+    dependencyProblems,
+    findDependencyCycle,
+    isBlocked,
+    isReady,
+    isSettled,
+    openBlockers,
+    ready,
+    type DependencyProblem
+} from "./deps.js";
 
 export { formatIssueFile, formatNote, IssueParseError, parseIssueFile } from "./serialize.js";
 

@@ -1,10 +1,10 @@
 ---
 id: 50
 title: Issue dependencies
-state: Todo
+state: Done
 labels: [core, dx]
 created: 2026-07-29T18:55:16Z
-updated: 2026-07-29T18:55:17Z
+updated: 2026-07-29T19:04:58Z
 ---
 
 ## Description
@@ -31,3 +31,7 @@ On the overlap with the Blocked state, which this project's own config already h
 Recommendation: keep both, with a clear division. blockedBy is structural and machine-checkable — it points at another issue and drives readiness. The Blocked state stays for blockers that are not issues at all: waiting on a vendor, a decision, an access request. Those are real and the backlog should not be forced to invent a placeholder issue for them.
 
 What must not happen is deriving the Blocked state from blockedBy. That would make state a computed field in a file people hand-edit, and the two would disagree the first time someone set one without the other. Readiness is computed and never written; state stays authored.
+
+### 2026-07-29T19:04:58Z — claude (agent)
+
+Done. The motivating case is now recorded structurally rather than as prose: #0048 is blocked by #0047, across the hierarchy. The MCP ready_issues tool is deferred to #0005 since no MCP server exists yet.

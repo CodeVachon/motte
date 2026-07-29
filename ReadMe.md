@@ -58,6 +58,8 @@ motte add "Ship the thing"              # → #0001
 motte add "Write the parser" -p 1       # a child of #0001
 motte move 2 "in progress"
 motte note 2 "Frontmatter beats JSON for diff quality."
+motte block 2 1                         # #0002 waits on #0001
+motte ready                             # what can be picked up now
 motte status --epics
 ```
 
@@ -76,6 +78,34 @@ motte assign schema atlas
 
 An ambiguous fragment errors and lists the candidates rather than guessing.
 
+### Dependencies
+
+Parent/child is a tree. Dependencies are a DAG that crosses it — a child of one epic can gate work
+under another:
+
+```bash
+motte block 48 47        # #0048 waits on #0047
+motte ready              # what can be picked up right now
+motte ready --blocked    # what is waiting, and on what
+motte list --ready
+```
+
+**Ready** means not settled and nothing standing in the way. It is computed, never stored — a
+readiness field in a hand-edited file would go stale the moment someone closed a blocker without
+touching what it blocked. Same reasoning applies to the inverse: only `blockedBy` is written to
+disk, and "what does this block" is derived, because a two-sided relation in git-merged files will
+drift and then two files disagree with no tiebreaker.
+
+A cancelled blocker counts as settled. Abandoned work will never complete, so treating it as
+blocking would strand everything downstream of it forever.
+
+Cycles are rejected at write time and reported by `motte doctor`, since a dependency cycle is a
+deadlock where nothing can ever be ready.
+
+`blockedBy` is for prerequisites that _are_ issues. The `Blocked` state is for everything else —
+waiting on a vendor, a decision, an access request. Deliberately two mechanisms: readiness is
+computed, state stays authored.
+
 ## What an issue looks like
 
 `.motte/issues/0042-design-the-schema.md`:
@@ -88,6 +118,7 @@ state: In Progress
 parent: 7
 assignee: atlas
 labels: [core]
+blockedBy: [11]
 created: 2026-07-29T14:02:11Z
 updated: 2026-07-29T15:31:04Z
 ---

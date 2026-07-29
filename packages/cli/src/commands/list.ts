@@ -1,5 +1,13 @@
 import type { CommandModule } from "yargs";
-import { buildTree, flattenTree, stateCategory, type Issue } from "@motte/core";
+import {
+    buildTree,
+    flattenTree,
+    isReady,
+    isBlocked,
+    isSettled,
+    stateCategory,
+    type Issue
+} from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import { dim, issueLine, treeLines, warn } from "../ui/format.js";
 
@@ -9,6 +17,8 @@ interface ListArgs {
     assignee?: string;
     label?: string;
     open?: boolean;
+    ready?: boolean;
+    blocked?: boolean;
     tree?: boolean;
     json?: boolean;
 }
@@ -35,11 +45,17 @@ export const listCommand: CommandModule<{}, ListArgs> = {
                 type: "boolean",
                 describe: "Hide completed and cancelled issues"
             })
+            .option("ready", {
+                type: "boolean",
+                describe: "Only issues that can be picked up now"
+            })
+            .option("blocked", { type: "boolean", describe: "Only issues waiting on a blocker" })
             .option("tree", { alias: "t", type: "boolean", describe: "Render as a hierarchy" })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
-        let issues = store.all();
+        const all = store.all();
+        let issues = all;
 
         if (args.state !== undefined) {
             const needle = args.state.toLowerCase();
@@ -68,6 +84,16 @@ export const listCommand: CommandModule<{}, ListArgs> = {
                 const category = stateCategory(config, issue.state);
                 return category !== "completed" && category !== "cancelled";
             });
+        }
+
+        if (args.ready === true) {
+            issues = issues.filter((issue) => isReady(config, all, issue));
+        }
+
+        if (args.blocked === true) {
+            issues = issues.filter(
+                (issue) => !isSettled(config, issue) && isBlocked(config, all, issue)
+            );
         }
 
         if (args.json === true) {

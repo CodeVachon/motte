@@ -27,6 +27,7 @@ const FIELD_ORDER = [
     "parent",
     "assignee",
     "labels",
+    "blockedBy",
     "created",
     "updated"
 ] as const satisfies readonly (keyof Frontmatter)[];
@@ -74,6 +75,13 @@ function emitFrontmatter(issue: Issue): string {
             const labels = value as string[];
             if (labels.length === 0) continue;
             lines.push(`labels: [${labels.map(emitScalar).join(", ")}]`);
+        } else if (field === "blockedBy") {
+            const blockers = value as number[];
+            if (blockers.length === 0) continue;
+            // Sorted and de-duplicated on write so a merge that appends the same blocker twice, or
+            // in a different order, converges on one canonical form instead of churning the diff.
+            const canonical = [...new Set(blockers)].sort((a, b) => a - b);
+            lines.push(`blockedBy: [${canonical.join(", ")}]`);
         } else if (typeof value === "number") {
             lines.push(`${field}: ${value}`);
         } else {

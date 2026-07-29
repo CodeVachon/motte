@@ -4,8 +4,9 @@ title: fish and PowerShell completion
 state: Todo
 parent: 46
 labels: [cli, dist]
+blockedBy: [46]
 created: 2026-07-29T18:50:43Z
-updated: 2026-07-29T18:50:43Z
+updated: 2026-07-29T19:04:43Z
 ---
 
 ## Description

@@ -29,6 +29,14 @@ export const FrontmatterSchema = z.object({
     parent: z.number().int().positive().optional(),
     assignee: z.string().min(1).optional(),
     labels: z.array(z.string().min(1)).optional(),
+    /**
+     * Issues that must be complete before this one can start.
+     *
+     * Only this direction is stored. The inverse — what an issue blocks — is derived at read time,
+     * because a two-sided relation in hand-edited, git-merged files will drift, and then two files
+     * disagree about reality with no tiebreaker.
+     */
+    blockedBy: z.array(z.number().int().positive()).optional(),
     created: z.string().min(1),
     updated: z.string().min(1)
 });
@@ -61,6 +69,7 @@ export type NewIssue = {
     parent?: number;
     assignee?: string;
     labels?: string[];
+    blockedBy?: number[];
     description?: string;
     plan?: string;
 };
@@ -71,6 +80,7 @@ export type IssuePatch = {
     parent?: number | null;
     assignee?: string | null;
     labels?: string[];
+    blockedBy?: number[];
     description?: string;
     plan?: string;
 };

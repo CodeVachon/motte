@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AmbiguousRefError, CycleError, IssueNotFoundError, IssueStore } from "./IssueStore.js";
+import {
+    AmbiguousRefError,
+    CycleError,
+    DependencyCycleError,
+    IssueNotFoundError,
+    IssueStore
+} from "./IssueStore.js";
 import { loadConfigFrom } from "./config.js";
 import { DEFAULT_STATES } from "./schema/config.js";
 import type { Config } from "./schema/config.js";
@@ -202,6 +208,105 @@ describe("IssueStore", () => {
 
             expect(cleared.labels).toBeUndefined();
             expect(readFileSync(cleared.filePath!, "utf8")).not.toContain("labels");
+        });
+    });
+
+    describe("blockers", () => {
+        it("records and clears a blocker, dropping the frontmatter field when empty", () => {
+            const blocker = store.create({ title: "First" });
+            const dependent = store.create({ title: "Second" });
+
+            const blockedIssue = store.block(dependent.id, blocker.id);
+            expect(blockedIssue.blockedBy).toEqual([blocker.id]);
+            expect(readFileSync(blockedIssue.filePath!, "utf8")).toContain("blockedBy: [1]");
+
+            const cleared = store.unblock(dependent.id, blocker.id);
+            expect(cleared.blockedBy).toBeUndefined();
+            expect(readFileSync(cleared.filePath!, "utf8")).not.toContain("blockedBy");
+        });
+
+        it("is idempotent in both directions", () => {
+            const blocker = store.create({ title: "First" });
+            const dependent = store.create({ title: "Second" });
+
+            store.block(dependent.id, blocker.id);
+            expect(store.block(dependent.id, blocker.id).blockedBy).toEqual([blocker.id]);
+
+            store.unblock(dependent.id, blocker.id);
+            expect(store.unblock(dependent.id, blocker.id).blockedBy).toBeUndefined();
+        });
+
+        it("rejects a blocker that does not exist", () => {
+            const issue = store.create({ title: "Only" });
+            expect(() => store.block(issue.id, 99)).toThrow(IssueNotFoundError);
+        });
+
+        it("rejects a self-block and a cycle", () => {
+            const first = store.create({ title: "First" });
+            const second = store.create({ title: "Second" });
+
+            expect(() => store.block(first.id, first.id)).toThrow(DependencyCycleError);
+
+            store.block(second.id, first.id);
+            expect(() => store.block(first.id, second.id)).toThrow(DependencyCycleError);
+        });
+
+        it("sorts and de-duplicates blockers on write so merges converge", () => {
+            store.create({ title: "A" });
+            store.create({ title: "B" });
+            const dependent = store.create({ title: "C" });
+
+            const written = store.update(dependent.id, { blockedBy: [2, 1, 2] });
+            expect(readFileSync(written.filePath!, "utf8")).toContain("blockedBy: [1, 2]");
+        });
+
+        it("derives the inverse without storing it", () => {
+            const blocker = store.create({ title: "Blocker" });
+            const a = store.create({ title: "A" });
+            const b = store.create({ title: "B" });
+
+            store.block(a.id, blocker.id);
+            store.block(b.id, blocker.id);
+
+            expect(store.blocks(blocker.id).map((x) => x.id)).toEqual([a.id, b.id]);
+            // The blocker's own file says nothing about what it blocks.
+            expect(readFileSync(store.require(blocker.id).filePath!, "utf8")).not.toContain(
+                "blocks"
+            );
+        });
+
+        it("moves an issue from blocked to ready when its blocker completes", () => {
+            const blocker = store.create({ title: "Blocker" });
+            const dependent = store.create({ title: "Dependent" });
+            store.block(dependent.id, blocker.id);
+
+            expect(store.ready().map((x) => x.id)).toEqual([blocker.id]);
+            expect(store.blocked().map((x) => x.id)).toEqual([dependent.id]);
+
+            store.setState(blocker.id, "done");
+
+            expect(store.ready().map((x) => x.id)).toEqual([dependent.id]);
+            expect(store.blocked()).toEqual([]);
+        });
+
+        it("survives a round-trip through disk", () => {
+            store.create({ title: "A" });
+            store.create({ title: "B" });
+            const dependent = store.create({ title: "C" });
+            store.update(dependent.id, { blockedBy: [1, 2] });
+
+            expect(new IssueStore(config).require(dependent.id).blockedBy).toEqual([1, 2]);
+        });
+
+        it("allows blockers that cross the parent hierarchy", () => {
+            const epicA = store.create({ title: "Epic A" });
+            const epicB = store.create({ title: "Epic B" });
+            const childOfA = store.create({ title: "Child of A", parent: epicA.id });
+            const childOfB = store.create({ title: "Child of B", parent: epicB.id });
+
+            // The whole point: a dependency the tree cannot express.
+            expect(() => store.block(childOfB.id, childOfA.id)).not.toThrow();
+            expect(store.require(childOfB.id).blockedBy).toEqual([childOfA.id]);
         });
     });
 
