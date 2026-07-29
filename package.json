@@ -1,0 +1,42 @@
+{
+  "name": "motte",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A lightweight project command center for small projects — issues, plans, and notes in committed files, with a CLI, a web UI, and baked-in MCP support for agents.",
+  "packageManager": "bun@1.3.8",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CodeVachon/motte.git"
+  },
+  "author": "Christopher Vachon <code@christophervachon.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/CodeVachon/motte/issues"
+  },
+  "homepage": "https://codevachon.github.io/motte",
+  "scripts": {
+    "start": "bun run packages/cli/src/index.ts",
+    "dev": "bun run --watch packages/cli/src/index.ts",
+    "clean": "rm -rf dist bin .vitest packages/*/dist apps/*/dist packages/cli/src/generated",
+    "build:web": "bun run --cwd apps/web build && bun run scripts/embed-web-assets.ts",
+    "build": "bun run build:web && bun build --compile --outfile=bin/motte packages/cli/src/index.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "doctor": "bun run packages/cli/src/index.ts doctor"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+bin
+.vitest
+coverage
+bun.lock
+
+# motte owns the format of its own issue files. Prettier's Markdown rules and motte's writer are
+# not the same, so letting both format these files makes `format:check` fail after any `motte`
+# command that rewrites one.
+.motte
+
+apps/*/dist
+packages/cli/src/generated

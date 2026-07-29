@@ -1,0 +1,12 @@
+{
+  "name": "@motte/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Data layer for motte — on-disk issue format, config, store, and derived views.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "yaml": "^2.8.0",
+    "zod": "^4.2.1"
+  }
+}
