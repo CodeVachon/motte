@@ -78,6 +78,23 @@ motte assign schema atlas
 
 An ambiguous fragment errors and lists the candidates rather than guessing.
 
+### Editing
+
+Pass flags to change one field, or no flags to open the whole issue in `$EDITOR`:
+
+```bash
+motte edit 12 --state done --assignee atlas
+motte edit 12                              # opens the raw Markdown
+```
+
+The editor gets a temp copy, so an unparseable result never overwrites a good issue — the draft is
+kept and its path reported. `id` and `created` come from disk regardless of what you typed, since
+they are identity rather than content, and `updated` is bumped for you. Rename the title and the
+file is renamed to match.
+
+Editor resolution follows git: `MOTTE_EDITOR`, then `VISUAL`, then `EDITOR`, then `vi` (`notepad` on
+Windows). Commands with flags work — `EDITOR="code -w"`.
+
 ### Dependencies
 
 Parent/child is a tree. Dependencies are a DAG that crosses it — a child of one epic can gate work

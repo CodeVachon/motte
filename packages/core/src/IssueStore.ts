@@ -283,6 +283,54 @@ export class IssueStore {
         return written;
     }
 
+    /**
+     * Replace an issue wholesale from an externally edited version — the `$EDITOR` path.
+     *
+     * Unlike `update`, this can change notes and unknown sections, because the editor hands back a
+     * whole file. `id` and `created` are taken from the issue on disk rather than the edited copy:
+     * they are identity, not content, and an accidental change to either would silently fork the
+     * issue. Everything else the editor said wins.
+     */
+    replace(id: number, edited: Issue): Issue {
+        const existing = this.require(id);
+
+        const state = resolveState(this.config, edited.state).name;
+
+        if (edited.parent !== undefined) {
+            this.require(edited.parent);
+            if (edited.parent !== existing.parent) this.assertNoCycle(id, edited.parent);
+        }
+
+        if (edited.blockedBy !== undefined && edited.blockedBy.length > 0) {
+            for (const blocker of edited.blockedBy) this.require(blocker);
+            this.assertNoDependencyCycle(id, edited.blockedBy);
+        }
+
+        const next: Issue = {
+            ...edited,
+            id: existing.id,
+            created: existing.created,
+            state,
+            updated: timestamp()
+        };
+
+        if (next.blockedBy !== undefined && next.blockedBy.length === 0) delete next.blockedBy;
+        if (next.labels !== undefined && next.labels.length === 0) delete next.labels;
+
+        const written = this.write(next, issueFilename(next.id, next.title));
+
+        if (existing.filePath !== undefined && existing.filePath !== written.filePath) {
+            try {
+                unlinkSync(existing.filePath);
+            } catch {
+                // The new file is written; a stale source is reported by `motte doctor`.
+            }
+            this.cache.delete(existing.filePath);
+        }
+
+        return written;
+    }
+
     setState(id: number, state: string): Issue {
         return this.update(id, { state });
     }

@@ -211,6 +211,113 @@ describe("IssueStore", () => {
         });
     });
 
+    describe("replace — the $EDITOR path", () => {
+        it("applies everything the editor changed, including notes and unknown sections", () => {
+            const created = store.create({ title: "Before", description: "Old." });
+
+            const edited = {
+                ...created,
+                title: "After",
+                state: "In Progress",
+                description: "New.",
+                notes: [
+                    {
+                        at: "2026-07-29T12:00:00Z",
+                        author: { name: "chris", type: "user" as const },
+                        body: "Hand-written."
+                    }
+                ],
+                unknownSections: [
+                    { heading: "Risks", body: "A risk.", after: "description" as const }
+                ]
+            };
+
+            const written = store.replace(created.id, edited);
+
+            expect(written.title).toBe("After");
+            expect(written.state).toBe("In Progress");
+            expect(written.notes).toHaveLength(1);
+            expect(written.unknownSections[0]!.heading).toBe("Risks");
+            expect(readFileSync(written.filePath!, "utf8")).toContain("## Risks");
+        });
+
+        it("keeps id and created from disk, ignoring what the editor said", () => {
+            const created = store.create({ title: "Identity" });
+
+            const written = store.replace(created.id, {
+                ...created,
+                id: 999,
+                created: "1999-01-01T00:00:00Z"
+            });
+
+            // Identity is not content — an edited id or created date must not fork the issue.
+            expect(written.id).toBe(created.id);
+            expect(written.created).toBe(created.created);
+        });
+
+        it("bumps updated even when the editor left the timestamp alone", () => {
+            const created = store.create({ title: "Stamp" });
+
+            const written = store.replace(created.id, { ...created, description: "Changed." });
+
+            expect(written.updated >= created.updated).toBe(true);
+            expect(readFileSync(written.filePath!, "utf8")).toContain(
+                `updated: ${written.updated}`
+            );
+        });
+
+        it("renames the file when the title changed and removes the old one", () => {
+            const created = store.create({ title: "Old name" });
+            const written = store.replace(created.id, { ...created, title: "New name" });
+
+            expect(written.filePath).toMatch(/0001-new-name\.md$/);
+            expect(store.all()).toHaveLength(1);
+        });
+
+        it("rejects an unknown state", () => {
+            const created = store.create({ title: "Bad state" });
+            expect(() => store.replace(created.id, { ...created, state: "Shipped" })).toThrow(
+                /not a known state/
+            );
+        });
+
+        it("rejects a blocker that does not exist", () => {
+            const created = store.create({ title: "Bad blocker" });
+            expect(() => store.replace(created.id, { ...created, blockedBy: [42] })).toThrow(
+                IssueNotFoundError
+            );
+        });
+
+        it("rejects a parent that would create a cycle", () => {
+            const root = store.create({ title: "Root" });
+            const child = store.create({ title: "Child", parent: root.id });
+
+            expect(() => store.replace(root.id, { ...root, parent: child.id })).toThrow(CycleError);
+        });
+
+        it("rejects a dependency cycle", () => {
+            const first = store.create({ title: "First" });
+            const second = store.create({ title: "Second" });
+            store.block(second.id, first.id);
+
+            expect(() => store.replace(first.id, { ...first, blockedBy: [second.id] })).toThrow(
+                DependencyCycleError
+            );
+        });
+
+        it("drops emptied labels and blockers rather than writing empty arrays", () => {
+            const created = store.create({ title: "Emptied", labels: ["core"] });
+
+            const written = store.replace(created.id, { ...created, labels: [], blockedBy: [] });
+
+            expect(written.labels).toBeUndefined();
+            expect(written.blockedBy).toBeUndefined();
+            const raw = readFileSync(written.filePath!, "utf8");
+            expect(raw).not.toContain("labels");
+            expect(raw).not.toContain("blockedBy");
+        });
+    });
+
     describe("blockers", () => {
         it("records and clears a blocker, dropping the frontmatter field when empty", () => {
             const blocker = store.create({ title: "First" });

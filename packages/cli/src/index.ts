@@ -20,6 +20,7 @@ import {
     noteCommand
 } from "./commands/mutate.js";
 import { showCommand } from "./commands/show.js";
+import { EditorError } from "./ui/editor.js";
 import { statusCommand, treeCommand } from "./commands/status.js";
 import { error } from "./ui/format.js";
 
@@ -34,6 +35,7 @@ const EXPECTED_ERRORS = [
     ConfigError,
     CycleError,
     DependencyCycleError,
+    EditorError,
     IssueNotFoundError,
     IssueParseError
 ];

@@ -1,6 +1,88 @@
 import type { CommandModule } from "yargs";
+import { basename } from "node:path";
+import {
+    formatIssueFile,
+    issueFilename,
+    parseIssueFile,
+    type Config,
+    type Issue,
+    type IssueStore
+} from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
-import { issueLine, ok, paintId, paintState } from "../ui/format.js";
+import { EditorRejectedError, editInEditor } from "../ui/editor.js";
+import { dim, issueLine, ok, paintId, paintState } from "../ui/format.js";
+
+/**
+ * `motte edit <ref>` with no field flags: hand the raw Markdown to `$EDITOR`.
+ *
+ * The edit lands on a temp copy, so an unparseable result never overwrites a good issue. What comes
+ * back goes through `store.replace`, which re-derives the filename from the title, revalidates the
+ * state, parent and blockers, and bumps `updated` — none of which the user should have to remember.
+ */
+function editInteractively(store: IssueStore, config: Config, target: Issue, json: boolean): void {
+    const original = formatIssueFile(target);
+
+    const { text, draftPath } = editInEditor({
+        content: original,
+        filename: basename(target.filePath ?? issueFilename(target.id, target.title))
+    });
+
+    if (text === original) {
+        process.stdout.write(`${dim(`no changes to ${paintId(target.id)}`)}\n`);
+        return;
+    }
+
+    if (text.trim().length === 0) {
+        throw new EditorRejectedError(
+            `the file came back empty, so ${paintId(target.id)} was left alone. ` +
+                `To delete an issue, remove its file.`,
+            draftPath
+        );
+    }
+
+    let edited: Issue;
+    try {
+        edited = parseIssueFile(text, draftPath);
+    } catch (thrown) {
+        throw new EditorRejectedError(
+            `that is not a valid issue file, so nothing was changed.\n  ${
+                thrown instanceof Error ? thrown.message : String(thrown)
+            }`,
+            draftPath
+        );
+    }
+
+    if (edited.id !== target.id) {
+        throw new EditorRejectedError(
+            `the id changed from ${target.id} to ${edited.id}. An id is identity, not content — ` +
+                `changing it here would fork the issue, so nothing was changed.`,
+            draftPath
+        );
+    }
+
+    // A bad state name, a missing blocker or a cycle all throw from here. Without this, the user's
+    // whole edit would be discarded over a typo, with no way back to it.
+    let issue: Issue;
+    try {
+        issue = store.replace(target.id, edited);
+    } catch (thrown) {
+        throw new EditorRejectedError(
+            `${thrown instanceof Error ? thrown.message : String(thrown)}\n  nothing was changed.`,
+            draftPath
+        );
+    }
+
+    if (json) {
+        emitJson(issueJson(issue));
+        return;
+    }
+
+    const renamed = target.filePath !== issue.filePath;
+    process.stdout.write(
+        `${ok(`updated ${paintId(issue.id)}`)}\n${issueLine(config, issue)}\n` +
+            (renamed ? `${dim(`renamed to ${basename(issue.filePath!)}`)}\n` : "")
+    );
+}
 
 interface AddArgs {
     title: string;
@@ -226,6 +308,22 @@ export const editCommand: CommandModule<{}, EditArgs> = {
     handler: (args) => {
         const { config, store } = context();
         const target = store.resolve(args.ref);
+
+        // No field flags means "let me edit the whole thing" rather than "change nothing" — an
+        // empty patch would otherwise be a silent no-op write that only bumped `updated`.
+        const flags = [
+            args.title,
+            args.description,
+            args.plan,
+            args.state,
+            args.assignee,
+            args.parent,
+            args.label
+        ];
+        if (flags.every((flag) => flag === undefined)) {
+            editInteractively(store, config, target, args.json === true);
+            return;
+        }
 
         const parent =
             args.parent === undefined
