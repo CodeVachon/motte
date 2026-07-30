@@ -43,3 +43,4 @@
 {"at":"2026-07-30T18:25:18Z","id":76,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T18:40:02Z","id":26,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T18:44:14Z","id":26,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T19:01:17Z","id":77,"by":"claude","as":"agent","type":"created","title":"Verify the Windows asset before publishing a release","state":"Done"}

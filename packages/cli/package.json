@@ -1,6 +1,6 @@
 {
   "name": "@motte/cli",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Command line interface, local web server, and MCP server for motte.",
   "type": "module",
