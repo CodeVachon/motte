@@ -1,10 +1,21 @@
 # Agent Rules
 
+The full procedure for taking an issue from Todo to Done — including the complete gate and how to
+read fallow's output — is the `work-issue` skill in `.claude/skills/work-issue/`. Follow it when
+working a ticket. What follows is the short version.
+
 Before completing work in this repository, always run all of the following:
 
+- `bun run format` then `bun run format:check`
 - `bun run typecheck`
 - `bun run test`
 - `bun run doctor`
+- `/code-review` over the diff
+- `mcp__fallow__audit`, with real coverage from `bun run test:coverage --coverage.reporter=json`
+
+Run them **after the last change that touches the repo**, including any `motte` mutation, and gate on
+exit codes rather than reading the output. Both times a red commit reached CI here, the cause was
+verifying first and mutating afterwards.
 
 `bun run doctor` runs `motte doctor` against this repository's own backlog. It exits non-zero when
 an issue file is malformed, an id is duplicated, a parent is missing, or the tree contains a cycle.
