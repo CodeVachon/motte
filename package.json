@@ -1,6 +1,6 @@
 {
   "name": "motte",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A lightweight project command center for small projects \u2014 issues, plans, and notes in committed files, with a CLI, a web UI, and baked-in MCP support for agents.",
   "packageManager": "bun@1.3.8",
