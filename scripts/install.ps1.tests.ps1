@@ -147,34 +147,27 @@ try {
         Assert-Checksum $payload 'payload.bin' $sums
     }
 
-    Test-Case 'rejects a mismatch' {
-        $sums = Join-Path $work 'wrong.txt'
-        Set-Content -Path $sums -Value ("0" * 64 + "  payload.bin")
-        $threw = $false
-        try { Assert-Checksum $payload 'payload.bin' $sums } catch { $threw = $true }
-        # Stop-Motte exits rather than throwing, so run it in a child pwsh to observe the failure.
-        if (-not $threw) {
-            $probe = @"
-`$env:MOTTE_SOURCE_ONLY = '1'
-. '$installer'
-Assert-Checksum '$payload' 'payload.bin' '$sums'
-"@
-            pwsh -NoProfile -Command $probe 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { throw 'a mismatched checksum was accepted' }
+    # Stop-Motte calls `exit`, which is not a catchable exception and terminates the whole host script
+    # when the function has been dot-sourced. So the refusal cases run the installer's function in a
+    # child pwsh and assert on its exit code — the first version of these tests called it inline and
+    # killed the run at the first refusal.
+    function Assert-Refuses {
+        param([string] $Name, [string] $Statement)
+
+        Test-Case $Name {
+            $probe = "`$env:MOTTE_SOURCE_ONLY = '1'; . '$installer'; $Statement"
+            $output = pwsh -NoProfile -Command $probe 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0) { throw "expected a refusal, got success: $output" }
         }
     }
 
-    Test-Case 'refuses an asset that is not listed at all' {
-        $sums = Join-Path $work 'other.txt'
-        Set-Content -Path $sums -Value "$hash  something-else.bin"
-        $probe = @"
-`$env:MOTTE_SOURCE_ONLY = '1'
-. '$installer'
-Assert-Checksum '$payload' 'payload.bin' '$sums'
-"@
-        pwsh -NoProfile -Command $probe 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { throw 'an unlisted asset was accepted' }
-    }
+    $mismatch = Join-Path $work 'wrong.txt'
+    Set-Content -Path $mismatch -Value (("0" * 64) + "  payload.bin")
+    Assert-Refuses 'rejects a mismatched checksum' "Assert-Checksum '$payload' 'payload.bin' '$mismatch'"
+
+    $unlisted = Join-Path $work 'other.txt'
+    Set-Content -Path $unlisted -Value "$hash  something-else.bin"
+    Assert-Refuses 'refuses an asset that is not listed at all' "Assert-Checksum '$payload' 'payload.bin' '$unlisted'"
 
     Test-Case 'round-trips a gzip stream' {
         $source = Join-Path $work 'plain.txt'
