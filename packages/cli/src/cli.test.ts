@@ -26,14 +26,31 @@ interface Run {
 }
 
 /**
- * Every spawn is bounded.
+ * Every spawn is bounded, and every test is retried once.
  *
  * `spawnSync` blocks the worker thread, so vitest's `testTimeout` cannot interrupt it — a child that
- * never exits hangs the whole run rather than failing one test. That is not hypothetical: it hung a CI
- * job for fifteen minutes with no indication of which command was stuck. A timeout turns that into a
- * named failure.
+ * never exits hangs the whole run rather than failing one test. That hung a CI job for eighteen
+ * minutes with no indication of which command was stuck.
+ *
+ * With the bound in place the real behaviour became visible: on the GitHub runner an ordinary spawn
+ * occasionally stalls indefinitely while its neighbours in the same run complete in under a second.
+ * Two separate runs stalled on `motte init` and on `motte add` — different trivial commands, so it is
+ * the runner rather than any code path.
+ *
+ * The retry is on the *test*, not the command. A stalled `motte add` may have written its file before
+ * stalling, so re-running the command could double-apply; re-running the test cannot, because every
+ * test builds a fresh temp project. 20s is a twentyfold margin over the observed worst case.
  */
-const SPAWN_TIMEOUT_MS = 60_000;
+const SPAWN_TIMEOUT_MS = 20_000;
+
+/**
+ * Applied to every describe below. See `SPAWN_TIMEOUT_MS`.
+ *
+ * Two, not one, from the observed rate: about 3% of spawns stalled in the run that exposed this, so a
+ * single retry would still leave roughly one run in eight red across 35 tests. Retries re-run
+ * `beforeEach`, so each attempt gets its own temp project. The cost is only paid when a stall happens.
+ */
+const RETRY = { retry: 2 };
 
 function motte(cwd: string, args: string[], env: Record<string, string> = {}): Run {
     // `bun <file>`, not `bun run <file>`: executing the entry point directly skips package.json script
@@ -57,7 +74,10 @@ function motte(cwd: string, args: string[], env: Record<string, string> = {}): R
         throw new Error(`motte ${args.join(" ")} failed to run: ${result.error.message}`);
     }
     if (result.signal === "SIGKILL") {
-        throw new Error(`motte ${args.join(" ")} did not exit within ${SPAWN_TIMEOUT_MS}ms`);
+        throw new Error(
+            `motte ${args.join(" ")} stalled: no exit within ${SPAWN_TIMEOUT_MS}ms. ` +
+                `Neighbouring spawns take under a second, so suspect the runner, not the command.`
+        );
     }
 
     const stdout = result.stdout ?? "";
@@ -101,7 +121,7 @@ interface IssueJson {
     blockedBy: number[];
 }
 
-describe("init", () => {
+describe("init", RETRY, () => {
     it("writes a config and an issues directory", () => {
         const root = project();
         const run = motte(root, ["init", "--name", "Test"]);
@@ -132,7 +152,7 @@ describe("init", () => {
     });
 });
 
-describe("the everyday sequence", () => {
+describe("the everyday sequence", RETRY, () => {
     let root: string;
 
     beforeEach(() => {
@@ -267,7 +287,7 @@ describe("the everyday sequence", () => {
     });
 });
 
-describe("dependencies", () => {
+describe("dependencies", RETRY, () => {
     let root: string;
 
     beforeEach(() => {
@@ -309,7 +329,7 @@ describe("dependencies", () => {
     });
 });
 
-describe("reporting", () => {
+describe("reporting", RETRY, () => {
     it("reports progress and readiness counts", () => {
         const root = initialised();
         motte(root, ["add", "Done thing"]);
@@ -395,7 +415,7 @@ describe("reporting", () => {
 });
 
 /** The paths most likely to regress, and the ones a user actually hits by mistake. */
-describe("failure paths", () => {
+describe("failure paths", RETRY, () => {
     let root: string;
 
     beforeEach(() => {
@@ -469,7 +489,7 @@ describe("failure paths", () => {
  * Wiring, which is what has actually broken. Each of these corresponds to a real bug found during
  * development, so they are regression tests rather than speculation.
  */
-describe("wiring", () => {
+describe("wiring", RETRY, () => {
     it("reports the version from package.json", () => {
         const pkg = JSON.parse(
             readFileSync(join(import.meta.dirname, "..", "..", "..", "package.json"), "utf8")
