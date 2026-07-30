@@ -10,6 +10,7 @@ import {
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { serveCommand } from "./commands/serve.js";
 import { completionCandidates, formatCandidates, isZshShell, wordsFromArgv } from "./completion.js";
 import { context } from "./context.js";
 import { initCommand } from "./commands/init.js";
@@ -114,6 +115,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(pruneCommand)
         .command(restoreCommand)
         .command(doctorCommand)
+        .command(serveCommand)
         .command(mcpCommand)
         .command(installCommand)
         .command(upgradeCommand)

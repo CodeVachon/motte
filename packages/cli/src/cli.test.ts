@@ -461,6 +461,7 @@ describe("wiring", RETRY, () => {
             "log",
             "prune",
             "restore",
+            "serve",
             "doctor",
             "mcp",
             "install",
