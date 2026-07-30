@@ -53,5 +53,9 @@ works as well as `motte show 12`.
 - Tests sit beside their source as `*.test.ts`.
 - Prettier settings are not negotiable: 4-space, 100 columns, double quotes, no trailing comma.
 - Distribution is Bun-compiled binaries only. There is no npm publish and no node-compat build
-  target, so Bun APIs are fair game. Do not add one.
+  target. Do not add one.
+- **But vitest runs on Node, so `Bun.*` globals are undefined in tests.** Any module that reaches for
+  `Bun.gzipSync`, `Bun.CryptoHasher`, `Bun.serve` and so on becomes untestable. Prefer the `node:`
+  equivalents (`node:zlib`, `node:crypto`, `node:http`) in library code — they work identically under
+  Bun. Bun APIs are fine in `scripts/`, which only ever runs under Bun.
 - `.motte/` must never be added to `.gitignore`.

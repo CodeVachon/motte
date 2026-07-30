@@ -48,7 +48,19 @@ The installer drops a single self-contained binary into `~/.motte/versions/v<X.Y
 onto your `PATH` at `~/.local/bin/motte`. There is no runtime prerequisite — no Node, no Bun. It
 does not modify your current shell, so open a new terminal before the next step.
 
-Then `motte upgrade` to update, `motte uninstall` to remove it.
+Then:
+
+```bash
+motte upgrade --check    # is there a newer release?
+motte upgrade            # update in place
+motte upgrade 0.1.0      # or pin a version
+motte uninstall          # remove motte, leaving your project backlogs alone
+```
+
+An upgrade installs alongside the current version and repoints a symlink, so rolling back is a
+symlink change rather than a reinstall. Old versions are pruned to the last two — these binaries carry
+the whole Bun runtime, so they are not small. The version you are running is never pruned; it goes on
+the next upgrade.
 
 ## Getting started
 

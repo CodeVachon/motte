@@ -1,6 +1,5 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import pkg from "../../../package.json";
 import {
     AmbiguousRefError,
     ConfigError,
@@ -25,16 +24,11 @@ import {
 import { showCommand } from "./commands/show.js";
 import { EditorError } from "./ui/editor.js";
 import { statusCommand, treeCommand } from "./commands/status.js";
+import { uninstallCommand, upgradeCommand } from "./commands/upgrade.js";
+import { VERSION as CLI_VERSION } from "./version.js";
 import { error } from "./ui/format.js";
 
-/**
- * The version motte reports, taken from the root package.json rather than duplicated here.
- *
- * Bun inlines a JSON import at compile time, so this is baked into the binary and cannot drift from
- * the version the release was cut from. The release workflow additionally refuses to build when the
- * git tag disagrees with this value.
- */
-export const VERSION: string = pkg.version;
+export { VERSION } from "./version.js";
 
 /**
  * Errors that represent a normal "you asked for something that isn't there" outcome. These print a
@@ -95,7 +89,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
     const cli = yargs(argv)
         .scriptName("motte")
         .usage("$0 <command> [options]")
-        .version(VERSION)
+        .version(CLI_VERSION)
         .command(initCommand)
         .command(addCommand)
         .command(listCommand)
@@ -110,6 +104,8 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(statusCommand)
         .command(treeCommand)
         .command(doctorCommand)
+        .command(upgradeCommand)
+        .command(uninstallCommand)
         // Four parameters selects yargs' "fallback" completion form: ours runs first, and calling
         // completionFilter() hands back to yargs' own completion of command and flag names.
         .completion(
