@@ -10,6 +10,8 @@ import {
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { completionCandidates, formatCandidates, isZshShell, wordsFromArgv } from "./completion.js";
+import { context } from "./context.js";
 import { initCommand } from "./commands/init.js";
 import { listCommand } from "./commands/list.js";
 import {
@@ -100,6 +102,41 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(statusCommand)
         .command(treeCommand)
         .command(doctorCommand)
+        // Four parameters selects yargs' "fallback" completion form: ours runs first, and calling
+        // completionFilter() hands back to yargs' own completion of command and flag names.
+        .completion(
+            "completion",
+            "Print a shell completion script for bash or zsh",
+            (
+                current: string,
+                _argv: unknown,
+                completionFilter: () => void,
+                done: (completions: string[]) => void
+            ) => {
+                // Everything here is best-effort. Completion runs on every TAB, so a missing config
+                // or a malformed issue must produce no candidates rather than an error in the shell.
+                try {
+                    // Deliberately from process.argv, not the parsed argv — see wordsFromArgv.
+                    const words = wordsFromArgv(process.argv, current);
+
+                    const { config, store } = context();
+                    const candidates = completionCandidates(
+                        { config, refs: store.refs() },
+                        words,
+                        current
+                    );
+
+                    if (candidates !== undefined) {
+                        done(formatCandidates(candidates, isZshShell()));
+                        return;
+                    }
+                } catch {
+                    // Fall through to yargs' own completion, which needs no project.
+                }
+
+                completionFilter();
+            }
+        )
         .demandCommand(1, "")
         .recommendCommands()
         .strict()

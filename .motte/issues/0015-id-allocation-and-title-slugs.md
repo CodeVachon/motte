@@ -1,11 +1,11 @@
 ---
 id: 15
 title: ID allocation and title slugs
-state: In Progress
+state: Done
 parent: 2
 labels: [core]
 created: 2026-07-29T11:37:00Z
-updated: 2026-07-29T16:04:09Z
+updated: 2026-07-30T00:50:42Z
 ---
 
 ## Description
@@ -33,3 +33,7 @@ here.
 ### 2026-07-29T16:04:09Z — claude (agent)
 
 nextId() from a directory scan and slugify()/issueFilename() are done and tested, including the gap case where an id is deleted and must not be reused. Still outstanding: the motte renumber command for repairing duplicate ids.
+
+### 2026-07-30T00:50:42Z — claude (agent)
+
+Closing. The remaining scope — motte renumber — was split into #0042 and is tracked there. nextId() from a directory scan and slugify()/issueFilename() are done and tested. Same bookkeeping slip as #0011: when work moves out of an issue into a new one, the original needs closing in the same breath.

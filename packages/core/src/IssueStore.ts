@@ -14,7 +14,7 @@ import { resolveState, type Config } from "./config.js";
 import { blocked, blocks, findDependencyCycle, openBlockers, ready } from "./deps.js";
 import { readIssueRef, type IssueRef } from "./frontmatter.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
-import { issueFilename } from "./slug.js";
+import { issueFilename, slugify } from "./slug.js";
 import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
 
 export class IssueNotFoundError extends Error {
@@ -181,9 +181,16 @@ export class IssueStore {
     }
 
     /**
-     * Resolve a user-supplied reference: a number is an id, anything else is a case-insensitive
-     * substring match on the title. Exact title matches win over substring matches, which is what
-     * makes short titles addressable even when they appear inside longer ones.
+     * Resolve a user-supplied reference: a number is an id, anything else matches the title.
+     *
+     * Matching is tried in order of decreasing precision — exact title, exact slug, then substring
+     * of either. Exact beats substring so a short title stays addressable even when it appears
+     * inside a longer one.
+     *
+     * The slug forms matter because a hyphenated fragment is not a substring of a spaced title:
+     * `reader-for-latency` does not appear in "Frontmatter-only reader for latency-sensitive reads",
+     * but it does in the slug. That is what lets tab completion insert a slug — a value with no
+     * spaces, which shells handle without quoting — and have it still resolve.
      */
     resolve(ref: string | number): Issue {
         if (typeof ref === "number") return this.require(ref);
@@ -194,14 +201,25 @@ export class IssueStore {
         }
 
         const needle = trimmed.toLowerCase();
+        const needleSlug = slugify(trimmed);
         const issues = this.all();
 
-        const exact = issues.filter((issue) => issue.title.toLowerCase() === needle);
-        if (exact.length === 1) return exact[0]!;
+        const attempts = [
+            (issue: Issue) => issue.title.toLowerCase() === needle,
+            (issue: Issue) => slugify(issue.title) === needleSlug,
+            (issue: Issue) => issue.title.toLowerCase().includes(needle),
+            (issue: Issue) => slugify(issue.title).includes(needleSlug)
+        ].map((predicate) => issues.filter(predicate));
 
-        const matches = issues.filter((issue) => issue.title.toLowerCase().includes(needle));
-        if (matches.length === 1) return matches[0]!;
-        if (matches.length > 1) throw new AmbiguousRefError(trimmed, matches);
+        for (const matches of attempts) {
+            if (matches.length === 1) return matches[0]!;
+        }
+
+        // No precision level identified exactly one. Report from the most precise level that found
+        // candidates at all, so the list offered is the smallest useful one.
+        for (const matches of attempts) {
+            if (matches.length > 1) throw new AmbiguousRefError(trimmed, matches);
+        }
 
         throw new IssueNotFoundError(trimmed);
     }

@@ -1,11 +1,11 @@
 ---
 id: 11
 title: Issue frontmatter schema
-state: In Progress
+state: Done
 parent: 2
 labels: [core]
 created: 2026-07-29T11:33:00Z
-updated: 2026-07-29T16:04:09Z
+updated: 2026-07-30T00:50:42Z
 ---
 
 ## Description
@@ -27,3 +27,7 @@ Frontmatter carries the structured fields only — `id`, `title`, `state`, `pare
 ### 2026-07-29T16:04:09Z — claude (agent)
 
 zod schemas for frontmatter and the parsed issue are in packages/core/src/schema/. Still outstanding: emitting schema/issue.json for editor autocomplete.
+
+### 2026-07-30T00:50:41Z — claude (agent)
+
+Closing. The remaining scope — emitting schema/issue.json — was split into #0041 and is tracked there. The zod schemas themselves are done. This should have been closed when the split happened, rather than left In Progress carrying a note that pointed at work which had already moved elsewhere.
