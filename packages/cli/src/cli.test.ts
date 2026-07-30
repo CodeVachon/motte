@@ -203,6 +203,37 @@ describe("the everyday sequence", () => {
         expect(motte(root, ["list", "--open", "--json"]).json<{ count: number }>().count).toBe(1);
     });
 
+    /**
+     * `-l a,b` reads as two labels. Taking it literally produced one label containing a comma, which
+     * the writer then emitted bare into the inline list, and the file stopped round-tripping.
+     */
+    it("splits comma-separated labels", () => {
+        const created = motte(root, [
+            "add",
+            "Multi",
+            "-l",
+            "cli,testing",
+            "-l",
+            "core",
+            "--json"
+        ]).json<IssueJson>();
+
+        expect(created.labels).toEqual(["cli", "testing", "core"]);
+        expect(motte(root, ["doctor"]).code).toBe(0);
+    });
+
+    it("drops blank labels and collapses duplicates", () => {
+        const created = motte(root, [
+            "add",
+            "Messy",
+            "-l",
+            "core, ,core",
+            "--json"
+        ]).json<IssueJson>();
+
+        expect(created.labels).toEqual(["core"]);
+    });
+
     it("edits fields without touching the others", () => {
         motte(root, ["add", "Original", "-d", "Keep me."]);
         const edited = motte(root, ["edit", "1", "--plan", "1. Do it", "--json"]).json<
@@ -308,6 +339,37 @@ describe("reporting", () => {
         const broken = motte(root, ["doctor"]);
         expect(broken.code).toBe(1);
         expect(broken.stdout + broken.stderr).toMatch(/#1 is used by 2 files/);
+    });
+
+    /**
+     * Round-trip integrity, reported against the real backlog rather than only in a unit test.
+     *
+     * A file that parses but does not re-serialise identically is silently corrupt: the next unrelated
+     * write reformats it. This escaped to CI once — a label containing a comma — because `doctor` was
+     * happy and only the round-trip test over this project's own issues noticed.
+     */
+    it("reports a file that does not survive a round trip", () => {
+        const root = initialised();
+        motte(root, ["add", "Has a label", "-l", "core"]);
+
+        const file = join(
+            root,
+            ".motte",
+            "issues",
+            readdirSync(join(root, ".motte", "issues"))[0]!
+        );
+
+        // A comma inside an unquoted inline-list item: parses as two labels, re-serialises as one
+        // quoted item, so the bytes differ.
+        writeFileSync(
+            file,
+            readFileSync(file, "utf8").replace("labels: [core]", "labels: [core,cli]"),
+            "utf8"
+        );
+
+        const run = motte(root, ["doctor"]);
+        expect(run.code).toBe(1);
+        expect(run.stdout + run.stderr).toMatch(/does not survive a parse\/format round trip/);
     });
 });
 

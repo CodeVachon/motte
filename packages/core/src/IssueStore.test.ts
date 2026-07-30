@@ -689,6 +689,52 @@ describe("IssueStore", () => {
         });
     });
 
+    describe("round-trip integrity", () => {
+        it("says nothing about files it wrote itself", () => {
+            store.create({ title: "Written by us", labels: ["core", "cli"] });
+            store.create({ title: "Also ours" });
+
+            expect(store.notRoundTrippable()).toEqual([]);
+        });
+
+        /**
+         * The escape that motivated this check. A comma inside an unquoted inline-list item parses as
+         * two labels and re-serialises as one quoted item, so the file parses cleanly while no longer
+         * matching what the writer would produce.
+         */
+        it("reports a file that would be reformatted if written back", () => {
+            const issue = store.create({ title: "Has labels", labels: ["core"] });
+            writeFileSync(
+                issue.filePath!,
+                readFileSync(issue.filePath!, "utf8").replace(
+                    "labels: [core]",
+                    "labels: [core,cli]"
+                ),
+                "utf8"
+            );
+
+            const found = store.notRoundTrippable();
+            expect(found).toHaveLength(1);
+            expect(found[0]!.id).toBe(issue.id);
+            // Parseable, so it is not a broken file — which is exactly why it needed its own check.
+            expect(store.brokenFiles()).toEqual([]);
+        });
+
+        it("reports a value quoted where the writer would not quote it", () => {
+            // Semantically identical and perfectly valid YAML, but not what `formatIssueFile` emits,
+            // so an unrelated write would silently rewrite the line.
+            const issue = store.create({ title: "Plain" });
+            writeFileSync(
+                issue.filePath!,
+                readFileSync(issue.filePath!, "utf8").replace("title: Plain", 'title: "Plain"'),
+                "utf8"
+            );
+
+            expect(store.notRoundTrippable().map((found) => found.id)).toEqual([issue.id]);
+            expect(store.require(issue.id).title).toBe("Plain");
+        });
+    });
+
     it("picks up a change made on disk behind its back", () => {
         const issue = store.create({ title: "Watched" });
         expect(store.require(issue.id).title).toBe("Watched");

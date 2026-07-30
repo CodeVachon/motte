@@ -314,6 +314,37 @@ describe("frontmatter", () => {
         expect(parseIssueFile(formatIssueFile(issue)).title).toBe(issue.title);
     });
 
+    /**
+     * A regression. `isPlainScalarSafe` rejected a *leading* comma but not an interior one — correct
+     * for a block scalar like a title, wrong inside `labels: [...]` where a comma separates items. A
+     * label containing one was emitted bare and read back as several labels, so the file no longer
+     * round-tripped. Interior commas in a title must stay unquoted, which is why the two cases need
+     * different rules rather than one stricter one.
+     */
+    it("quotes a label containing a comma, but not a title containing one", () => {
+        const issue = parseIssueFile(
+            build(
+                "id: 7",
+                'title: "First, second"',
+                "state: Todo",
+                'labels: ["cli,testing", plain]',
+                "created: 2026-07-29T12:00:00Z",
+                "updated: 2026-07-29T12:00:00Z"
+            )
+        );
+
+        expect(issue.labels).toEqual(["cli,testing", "plain"]);
+
+        const formatted = formatIssueFile(issue);
+        expect(formatted).toContain('labels: ["cli,testing", plain]');
+        expect(formatted).toContain("title: First, second");
+
+        const reparsed = parseIssueFile(formatted);
+        expect(reparsed.labels).toEqual(issue.labels);
+        expect(reparsed.title).toBe(issue.title);
+        expect(formatIssueFile(reparsed)).toBe(formatted);
+    });
+
     it("round-trips a title that looks like a number", () => {
         const issue = parseIssueFile(
             build(

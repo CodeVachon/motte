@@ -13,6 +13,37 @@ import { EditorRejectedError, editInEditor } from "../ui/editor.js";
 import { dim, issueLine, ok, paintId, paintState } from "../ui/format.js";
 
 /**
+ * Report a created or updated issue.
+ *
+ * Shared by `add` and `edit`, which had identical tails differing only in the verb.
+ */
+function reportMutation(config: Config, issue: Issue, verb: string, json: boolean): void {
+    if (json) {
+        emitJson(issueJson(issue));
+        return;
+    }
+
+    process.stdout.write(`${ok(`${verb} ${paintId(issue.id)}`)}\n${issueLine(config, issue)}\n`);
+}
+
+/**
+ * Normalise the repeatable `--label` flag.
+ *
+ * Comma-separated values are split, because `-l cli,testing` is what everyone reaches for and taking
+ * it literally produced a single label containing commas — which the frontmatter writer then emitted
+ * into an inline list that read back as several labels, breaking the file's round-trip guarantee.
+ * Blanks are dropped and duplicates collapsed so `-l a, ,a` cannot write a malformed list either.
+ */
+function normaliseLabels(values: readonly (string | number)[]): string[] {
+    const labels = values
+        .flatMap((value) => String(value).split(","))
+        .map((label) => label.trim())
+        .filter((label) => label.length > 0);
+
+    return [...new Set(labels)];
+}
+
+/**
  * `motte edit <ref>` with no field flags: hand the raw Markdown to `$EDITOR`.
  *
  * The edit lands on a temp copy, so an unparseable result never overwrites a good issue. What comes
@@ -114,7 +145,7 @@ export const addCommand: CommandModule<{}, AddArgs> = {
                 alias: "l",
                 type: "array",
                 string: true,
-                describe: "Label (repeatable)"
+                describe: "Label (repeatable, or comma-separated)"
             })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
@@ -128,17 +159,10 @@ export const addCommand: CommandModule<{}, AddArgs> = {
             ...(args.plan === undefined ? {} : { plan: args.plan }),
             ...(args.state === undefined ? {} : { state: args.state }),
             ...(args.assignee === undefined ? {} : { assignee: args.assignee }),
-            ...(args.label === undefined ? {} : { labels: args.label })
+            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) })
         });
 
-        if (args.json === true) {
-            emitJson(issueJson(issue));
-            return;
-        }
-
-        process.stdout.write(
-            `${ok(`created ${paintId(issue.id)}`)}\n${issueLine(config, issue)}\n`
-        );
+        reportMutation(config, issue, "created", args.json === true);
     }
 };
 
@@ -302,7 +326,7 @@ export const editCommand: CommandModule<{}, EditArgs> = {
                 alias: "l",
                 type: "array",
                 string: true,
-                describe: "Replace all labels"
+                describe: "Replace all labels (repeatable, or comma-separated)"
             })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
@@ -346,16 +370,9 @@ export const editCommand: CommandModule<{}, EditArgs> = {
             ...(args.state === undefined ? {} : { state: args.state }),
             ...(parent === undefined ? {} : { parent }),
             ...(assignee === undefined ? {} : { assignee }),
-            ...(args.label === undefined ? {} : { labels: args.label })
+            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) })
         });
 
-        if (args.json === true) {
-            emitJson(issueJson(issue));
-            return;
-        }
-
-        process.stdout.write(
-            `${ok(`updated ${paintId(issue.id)}`)}\n${issueLine(config, issue)}\n`
-        );
+        reportMutation(config, issue, "updated", args.json === true);
     }
 };

@@ -45,8 +45,13 @@ export class IssueParseError extends Error {
 /**
  * True when a string can be written as a bare YAML scalar. Deliberately conservative: anything
  * ambiguous gets quoted rather than risking a value that reads back as a different type.
+ *
+ * `flow` must be set for values written inside an inline `[...]` list, where `,` and the bracket
+ * characters are structural rather than ordinary text. Without it a label containing a comma is
+ * emitted bare into the list and reads back as several labels — the file stops round-tripping, which
+ * is the one property the format guarantees.
  */
-function isPlainScalarSafe(value: string): boolean {
+function isPlainScalarSafe(value: string, flow = false): boolean {
     if (value.length === 0) return false;
     if (value !== value.trim()) return false;
     // Leading YAML indicator characters.
@@ -55,6 +60,8 @@ function isPlainScalarSafe(value: string): boolean {
     if (value.includes(": ") || value.includes(" #")) return false;
     if (value.endsWith(":")) return false;
     if (/[\r\n]/.test(value)) return false;
+    // Interior flow indicators are harmless in a block scalar but structural inside `[...]`.
+    if (flow && /[,[\]{}]/.test(value)) return false;
     // Would read back as a non-string in the YAML 1.2 core schema.
     if (/^(true|false|null|~|-?\d+(\.\d+)?([eE][-+]?\d+)?)$/i.test(value)) return false;
     return true;
@@ -62,6 +69,11 @@ function isPlainScalarSafe(value: string): boolean {
 
 function emitScalar(value: string): string {
     return isPlainScalarSafe(value) ? value : JSON.stringify(value);
+}
+
+/** As `emitScalar`, for a value written inside an inline `[...]` list. */
+function emitFlowScalar(value: string): string {
+    return isPlainScalarSafe(value, true) ? value : JSON.stringify(value);
 }
 
 function emitFrontmatter(issue: Issue): string {
@@ -74,7 +86,7 @@ function emitFrontmatter(issue: Issue): string {
         if (field === "labels") {
             const labels = value as string[];
             if (labels.length === 0) continue;
-            lines.push(`labels: [${labels.map(emitScalar).join(", ")}]`);
+            lines.push(`labels: [${labels.map(emitFlowScalar).join(", ")}]`);
         } else if (field === "blockedBy") {
             const blockers = value as number[];
             if (blockers.length === 0) continue;

@@ -16,3 +16,5 @@
 {"at":"2026-07-30T14:44:22Z","id":40,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T14:52:51Z","id":40,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T15:03:34Z","id":69,"by":"claude","as":"agent","type":"created","title":"Guard the MCP JSON shape against model drift","state":"Todo"}
+{"at":"2026-07-30T15:19:20Z","id":70,"by":"claude","as":"agent","type":"created","title":"A label containing a comma broke the round trip","state":"In Progress"}
+{"at":"2026-07-30T15:19:20Z","id":70,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

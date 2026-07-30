@@ -47,6 +47,18 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
         }
 
         const issues = store.all();
+
+        for (const issue of store.notRoundTrippable()) {
+            problems.push({
+                severity: "error",
+                kind: "not-round-trippable",
+                message:
+                    `#${issue.id} does not survive a parse/format round trip, so writing to it ` +
+                    `would reformat the file. Usually a value that needs quoting.`,
+                file: issue.filePath
+            });
+        }
+
         const { problems: treeProblems } = buildTree(issues);
 
         for (const problem of treeProblems) {

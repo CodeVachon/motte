@@ -3,9 +3,9 @@ id: 69
 title: Guard the MCP JSON shape against model drift
 state: Todo
 parent: 67
-labels: [cli,testing,mcp]
+labels: [cli, testing, mcp]
 created: 2026-07-30T15:03:34Z
-updated: 2026-07-30T15:03:34Z
+updated: 2026-07-30T15:09:43Z
 ---
 
 ## Description

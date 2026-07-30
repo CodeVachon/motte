@@ -150,6 +150,28 @@ export class IssueStore {
     }
 
     /**
+     * Issues whose file would change if written back unmodified.
+     *
+     * The format's one hard guarantee is that parse-then-format is a no-op, and a violation is
+     * silent: the file parses, so every check passes, and then the next unrelated write reformats it.
+     * This exists because a label containing a comma was emitted bare into an inline list and read
+     * back as several labels — noticed only by the round-trip test over this project's own backlog,
+     * in CI, after a push. Surfaced by `motte doctor`.
+     */
+    notRoundTrippable(): Issue[] {
+        return this.all().filter((issue) => {
+            if (issue.filePath === undefined) return false;
+
+            try {
+                return formatIssueFile(issue) !== readFileSync(issue.filePath, "utf8");
+            } catch {
+                // Vanished between listing and reading. `brokenFiles` is where read errors belong.
+                return false;
+            }
+        });
+    }
+
+    /**
      * Headers only — id, title, state, assignee, labels, blockers — without touching any body.
      *
      * For latency-sensitive reads like tab completion, which fires on every keystroke and needs
