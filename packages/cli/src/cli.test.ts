@@ -25,10 +25,24 @@ interface Run {
     json: <T = Record<string, unknown>>() => T;
 }
 
+/**
+ * Every spawn is bounded.
+ *
+ * `spawnSync` blocks the worker thread, so vitest's `testTimeout` cannot interrupt it — a child that
+ * never exits hangs the whole run rather than failing one test. That is not hypothetical: it hung a CI
+ * job for fifteen minutes with no indication of which command was stuck. A timeout turns that into a
+ * named failure.
+ */
+const SPAWN_TIMEOUT_MS = 60_000;
+
 function motte(cwd: string, args: string[], env: Record<string, string> = {}): Run {
-    const result = spawnSync("bun", ["run", ENTRY, ...args], {
+    // `bun <file>`, not `bun run <file>`: executing the entry point directly skips package.json script
+    // resolution, which is per-spawn overhead this test pays sixty-odd times.
+    const result = spawnSync("bun", [ENTRY, ...args], {
         cwd,
         encoding: "utf8",
+        timeout: SPAWN_TIMEOUT_MS,
+        killSignal: "SIGKILL",
         env: {
             ...process.env,
             // Deterministic authorship: CI has no git user configured, and NO_COLOR keeps assertions
@@ -38,6 +52,13 @@ function motte(cwd: string, args: string[], env: Record<string, string> = {}): R
             ...env
         }
     });
+
+    if (result.error !== undefined) {
+        throw new Error(`motte ${args.join(" ")} failed to run: ${result.error.message}`);
+    }
+    if (result.signal === "SIGKILL") {
+        throw new Error(`motte ${args.join(" ")} did not exit within ${SPAWN_TIMEOUT_MS}ms`);
+    }
 
     const stdout = result.stdout ?? "";
 
@@ -484,12 +505,16 @@ describe("wiring", () => {
         const root = initialised();
         for (let i = 0; i < 5; i += 1) motte(root, ["add", `Issue ${i}`]);
 
-        const piped = spawnSync("sh", ["-c", `bun run ${ENTRY} list | head -2`], {
+        const piped = spawnSync("sh", ["-c", `bun ${ENTRY} list | head -2`], {
             cwd: root,
             encoding: "utf8",
+            timeout: SPAWN_TIMEOUT_MS,
+            killSignal: "SIGKILL",
             env: { ...process.env, MOTTE_AUTHOR: "Test User", NO_COLOR: "1" }
         });
 
+        // The point of the regression is that it exits, so assert that before inspecting the output.
+        expect(piped.signal).not.toBe("SIGKILL");
         expect(piped.stderr ?? "").not.toMatch(/EPIPE|Unhandled|error:/);
     });
 
