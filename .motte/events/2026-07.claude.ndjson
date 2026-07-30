@@ -5,3 +5,6 @@
 {"at":"2026-07-30T13:48:56Z","id":59,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T13:48:56Z","id":59,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T13:48:56Z","id":55,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T14:27:04Z","id":64,"by":"claude","as":"agent","type":"created","title":"Split createMotteServer","state":"Todo"}
+{"at":"2026-07-30T14:27:04Z","id":65,"by":"claude","as":"agent","type":"created","title":"Reduce complexity in the doctor handler","state":"Todo"}
+{"at":"2026-07-30T14:27:04Z","id":66,"by":"claude","as":"agent","type":"created","title":"Clean up dead exports and CLI duplication","state":"Todo"}
