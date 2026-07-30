@@ -23,3 +23,78 @@ jobs:
       - run: bun run test --reporter=verbose
       - name: Validate this repo's own backlog
         run: bun run doctor
+
+  # The Windows installer, and the only place the Windows binary is ever executed. Nothing here can be
+  # checked on a developer machine: there is no PowerShell on macOS or Linux by default, so this job is
+  # the whole verification story for install.ps1.
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit-test the installer's helpers
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/install.ps1.tests.ps1
+
+      # A pinned version rather than the live API lookup, so the job cannot flake on an
+      # unauthenticated rate limit. The lookup's parsing is covered by the helper tests above.
+      - name: Install a published release end to end
+        shell: pwsh
+        env:
+          MOTTE_VERSION: v0.2.0
+          MOTTE_INSTALL_DIR: ${{ runner.temp }}\motte
+        run: |
+          ./install.ps1
+
+          $root = "${{ runner.temp }}\motte"
+          $exe = Join-Path $root 'versions\v0.2.0\bin\motte.exe'
+          if (-not (Test-Path $exe)) { throw "binary was not installed at $exe" }
+
+          # The junction is what makes `current` follow the active version without admin rights.
+          $current = Get-Item (Join-Path $root 'current') -Force
+          if ($current.LinkType -ne 'Junction') { throw "current is $($current.LinkType), not a Junction" }
+          if (-not (Test-Path (Join-Path $root 'current\bin\motte.exe'))) {
+              throw 'the junction does not reach the binary'
+          }
+
+          # The PATH entry points through `current`, so it survives an upgrade.
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($userPath -notlike "*$root\current\bin*") { throw "PATH was not updated: $userPath" }
+
+      - name: Run the installed binary
+        shell: pwsh
+        run: |
+          $exe = "${{ runner.temp }}\motte\current\bin\motte.exe"
+
+          $version = & $exe --version
+          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "unexpected --version output: $version" }
+
+          # A real command, not just --version: this is the first time this binary has run at all, so
+          # prove it can read and write a project rather than merely start.
+          $project = Join-Path '${{ runner.temp }}' 'sample'
+          New-Item -ItemType Directory -Path $project -Force | Out-Null
+          Push-Location $project
+          try {
+              $env:MOTTE_AUTHOR = 'CI'
+              & $exe init --name Sample
+              & $exe add 'First issue' -d 'Created by CI on Windows'
+              & $exe move 1 done
+              $json = & $exe show 1 --json | ConvertFrom-Json
+              if ($json.state -ne 'Done') { throw "expected Done, got $($json.state)" }
+              & $exe doctor
+              if ($LASTEXITCODE -ne 0) { throw 'doctor failed on a freshly created project' }
+          }
+          finally { Pop-Location }
+
+      - name: Respect MOTTE_NO_MODIFY_PATH
+        shell: pwsh
+        env:
+          MOTTE_VERSION: v0.2.0
+          MOTTE_INSTALL_DIR: ${{ runner.temp }}\motte-quiet
+          MOTTE_NO_MODIFY_PATH: "1"
+        run: |
+          $before = [Environment]::GetEnvironmentVariable('Path', 'User')
+          ./install.ps1
+          $after = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($before -ne $after) { throw 'PATH was modified despite MOTTE_NO_MODIFY_PATH' }

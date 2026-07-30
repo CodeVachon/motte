@@ -1,11 +1,11 @@
 ---
 id: 26
 title: install.ps1
-state: Todo
+state: In Progress
 parent: 4
 labels: [dist]
 created: 2026-07-29T11:48:00Z
-updated: 2026-07-29T11:48:00Z
+updated: 2026-07-30T18:40:02Z
 ---
 
 ## Description
