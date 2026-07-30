@@ -72,3 +72,6 @@ jobs:
             dist/release/*.gz
             dist/release/checksums.txt
           generate_release_notes: true
+          # Everything below 1.0 is a pre-release: `motte serve`, `motte mcp` and the web UI do not
+          # exist yet, so the CLI is usable but the product is not finished.
+          prerelease: ${{ !startsWith(github.event.inputs.tag || github.ref_name, 'v1.') }}
