@@ -1,10 +1,10 @@
 ---
 id: 67
 title: Code health follow-ups
-state: Todo
+state: In Progress
 labels: [health]
 created: 2026-07-30T14:39:51Z
-updated: 2026-07-30T14:39:51Z
+updated: 2026-07-30T17:46:25Z
 ---
 
 ## Description
