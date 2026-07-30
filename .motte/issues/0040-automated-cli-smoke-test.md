@@ -5,7 +5,7 @@ state: Done
 parent: 3
 labels: [cli, testing]
 created: 2026-07-29T16:04:10Z
-updated: 2026-07-30T14:52:51Z
+updated: 2026-07-30T15:03:11Z
 ---
 
 ## Description
@@ -106,3 +106,29 @@ The wiring block is deliberately regression-shaped: every test in it corresponds
 actually hit — the `version` positional colliding with yargs' --version flag, `--since 7` silently
 accepted, the unhandled EPIPE, and a help-registration check that would have caught a command wired into
 the file but never registered.
+
+### 2026-07-30T15:03:11Z — claude (agent)
+
+Ran fallow audit against the changed files afterwards, with real Istanbul coverage fed in. It flagged
+exactly one thing, and it was fair: issueJson at CRAP 42, coverage 0%.
+
+That is the documented subprocess trade-off made concrete. The function is exercised by every --json
+assertion in cli.test.ts, but through a process the coverage provider cannot see, so fallow could only
+conclude nothing tests it. Suppressing would have been the wrong answer — issueJson is pure, so there was
+never a reason to reach it through a subprocess, and it is the exact contract that had just silently
+drifted.
+
+Added packages/cli/src/context.test.ts, whose first test is a mechanical drift guard: every key in
+FrontmatterSchema.shape must appear in the --json output. That is the check that would have caught the
+original bug at the moment blockedBy was added to the model. Verified by mutation — removing blockedBy from
+issueJson makes it fail with "frontmatter field `blockedBy` is missing from --json" — rather than trusting
+that a passing test proves anything.
+
+Second test pins the full key set, so a field cannot join the contract by accident either.
+
+fallow audit now returns pass with zero findings. 508 tests. Coverage 51.9%, branches 91%, functions 83%.
+
+Worth recording for whoever touches the two JSON surfaces: context.ts and mcp/server.ts are
+hand-maintained duplicates of overlapping shapes, and that duplication is what allowed the drift. The MCP
+shape differs deliberately (openBlockers, children, flattened note authors), so they cannot simply be
+merged, but only the CLI side has a model-completeness guard. The MCP side deserves the same one.
