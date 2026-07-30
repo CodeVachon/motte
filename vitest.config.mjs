@@ -11,6 +11,11 @@ export default defineConfig({
     test: {
         globals: true,
         include: ["packages/*/src/**/*.test.ts"],
+        /**
+         * The CLI tests spawn a real subprocess per assertion, which is the point — wiring and exit
+         * codes are what break — but it makes them an order of magnitude slower than the unit tests.
+         */
+        testTimeout: 30_000,
         coverage: {
             /**
              * Scoped to product source on purpose.

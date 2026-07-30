@@ -59,3 +59,7 @@ works as well as `motte show 12`.
   equivalents (`node:zlib`, `node:crypto`, `node:http`) in library code — they work identically under
   Bun. Bun APIs are fine in `scripts/`, which only ever runs under Bun.
 - `.motte/` must never be added to `.gitignore`.
+- `packages/cli/src/cli.test.ts` spawns the real CLI as a subprocess per assertion. That is deliberate —
+  wiring and exit codes are what actually break — but it makes the suite ~35s rather than ~4s, and those
+  tests get no coverage attribution because v8 coverage does not follow subprocesses. A low headline
+  coverage number for `packages/cli/src/commands/` does **not** mean those paths are unexercised.

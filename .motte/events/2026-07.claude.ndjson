@@ -13,3 +13,5 @@
 {"at":"2026-07-30T14:39:52Z","id":65,"by":"claude","as":"agent","type":"parent","from":3,"to":67}
 {"at":"2026-07-30T14:39:52Z","id":66,"by":"claude","as":"agent","type":"parent","from":null,"to":67}
 {"at":"2026-07-30T14:39:52Z","id":68,"by":"claude","as":"agent","type":"created","title":"doctor: warn when a settled issue has unsettled children","state":"Todo"}
+{"at":"2026-07-30T14:44:22Z","id":40,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-07-30T14:52:51Z","id":40,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

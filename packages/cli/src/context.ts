@@ -19,7 +19,14 @@ export function emitJson(value: unknown): void {
     process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** Strip the derived and internal fields that should not appear in `--json` output. */
+/**
+ * Strip the derived and internal fields that should not appear in `--json` output.
+ *
+ * `blockedBy` is part of the contract. It was missing until the CLI smoke tests went in: dependencies
+ * landed after this function was written and nothing updated it, so every `--json` response omitted
+ * blockers entirely — `motte block 2 1 --json` reported success without showing what it had recorded, and
+ * the MCP server's own shape disagreed with this one.
+ */
 export function issueJson(issue: {
     id: number;
     title: string;
@@ -27,6 +34,7 @@ export function issueJson(issue: {
     parent?: number | undefined;
     assignee?: string | undefined;
     labels?: string[] | undefined;
+    blockedBy?: number[] | undefined;
     created: string;
     updated: string;
     description: string;
@@ -41,6 +49,7 @@ export function issueJson(issue: {
         parent: issue.parent ?? null,
         assignee: issue.assignee ?? null,
         labels: issue.labels ?? [],
+        blockedBy: issue.blockedBy ?? [],
         created: issue.created,
         updated: issue.updated,
         description: issue.description,
