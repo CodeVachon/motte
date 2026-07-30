@@ -135,6 +135,29 @@ deadlock where nothing can ever be ready.
 waiting on a vendor, a decision, an access request. Deliberately two mechanisms: readiness is
 computed, state stays authored.
 
+### History
+
+Every transition is recorded to `.motte/events/`, committed alongside the issues:
+
+```bash
+motte log                   # everything, oldest first
+motte log 12                # one issue, plus how long it spent in each state
+motte log --since 7d        # what moved this week
+motte log --limit 20
+motte doctor                # warns about work started more than 7 days ago
+```
+
+The log records **transitions only** — created, state, title, assignee, parent, blockers. Notes already
+carry their own timestamp and author on the issue, and description or plan history is already in
+`git log -p`, so recording either would be a second copy that could disagree with the first. `motte log`
+merges the two at read time.
+
+Shards are named `<YYYY-MM>.<actor>.ndjson`. The month bounds file size; the per-actor half means two
+agents on two branches never write the same file, so append/append merge conflicts are structurally
+impossible rather than merely rare.
+
+Set `"events": { "enabled": false }` in the config to turn it off.
+
 ## What an issue looks like
 
 `.motte/issues/0042-design-the-schema.md`:

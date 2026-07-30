@@ -16,6 +16,7 @@ import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { listCommand } from "./commands/list.js";
+import { logCommand } from "./commands/log.js";
 import {
     addCommand,
     assignCommand,
@@ -107,6 +108,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(readyCommand)
         .command(statusCommand)
         .command(treeCommand)
+        .command(logCommand)
         .command(doctorCommand)
         .command(mcpCommand)
         .command(installCommand)

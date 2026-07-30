@@ -4,7 +4,7 @@ title: Event log
 state: In Progress
 labels: [core, reports]
 created: 2026-07-29T20:15:00Z
-updated: 2026-07-30T12:34:20Z
+updated: 2026-07-30T12:47:07Z
 ---
 
 ## Description
@@ -54,3 +54,7 @@ timeline for `motte log` merges file notes with events at read time rather than 
 Do not log content changes. `git log -p` on the issue file already holds that history. The event log
 exists for what git cannot answer cheaply — semantic transitions with timing, queryable without
 shelling out, and present before anything is committed.
+
+### 2026-07-30T12:47:07Z — claude (agent)
+
+Recording (#0056) and reporting (#0057) are done. Remaining children are #0058 prune and #0059 restore, which are maintenance rather than capability — the log is fully usable without them, and the web UI can consume it now.

@@ -1,5 +1,11 @@
 import type { CommandModule } from "yargs";
-import { buildTree, dependencyProblems, idFromFilename, stateCategory } from "@motte/core";
+import {
+    buildTree,
+    dependencyProblems,
+    idFromFilename,
+    stateCategory,
+    timeInState
+} from "@motte/core";
 import { basename } from "node:path";
 import { context, emitJson } from "../context.js";
 import { dim, error, ok, warn } from "../ui/format.js";
@@ -13,13 +19,20 @@ interface Problem {
 
 interface DoctorArgs {
     json?: boolean;
+    staleAfter?: number;
 }
 
 export const doctorCommand: CommandModule<{}, DoctorArgs> = {
     command: "doctor",
     describe: "Validate the backlog and report every problem found",
     builder: (yargs) =>
-        yargs.option("json", { type: "boolean", describe: "Machine-readable output" }),
+        yargs
+            .option("stale-after", {
+                type: "number",
+                default: 7,
+                describe: "Warn about work started more than this many days ago (0 disables)"
+            })
+            .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
         const problems: Problem[] = [];
@@ -45,9 +58,39 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
             });
         }
 
+        const log = store.events();
+
+        /**
+         * Work that has been started for a long time.
+         *
+         * This is the check that motivated the event log: #0011 and #0015 sat In Progress after their
+         * remaining scope had moved into other issues, and nothing could notice because the files carry
+         * no state-transition history. It needs the log, so it stays quiet when the log is empty.
+         */
+        const staleDays = args.staleAfter ?? 7;
+        if (staleDays > 0 && log.events.length > 0) {
+            const limit = staleDays * 86400_000;
+
+            for (const issue of issues) {
+                if (stateCategory(config, issue.state) !== "started") continue;
+
+                const inCurrentState = timeInState(log.events, issue.id).get(issue.state);
+                if (inCurrentState === undefined || inCurrentState < limit) continue;
+
+                problems.push({
+                    severity: "warning",
+                    kind: "stale-started",
+                    message:
+                        `#${issue.id} has been in "${issue.state}" for ` +
+                        `${Math.floor(inCurrentState / 86400_000)} days`,
+                    file: issue.filePath
+                });
+            }
+        }
+
         // A corrupt event log degrades reporting but does not invalidate any work, so it is a warning.
         // The issue files remain the source of truth.
-        for (const line of store.events().broken) {
+        for (const line of log.broken) {
             problems.push({
                 severity: "warning",
                 kind: "event-log",
