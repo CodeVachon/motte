@@ -123,8 +123,3 @@ export const listCommand: CommandModule<{}, ListArgs> = {
         );
     }
 };
-
-/** Shared by `show` and `tree` for consistent ordering. */
-export function byId(a: Issue, b: Issue): number {
-    return a.id - b.id;
-}

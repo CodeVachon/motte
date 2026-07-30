@@ -1,11 +1,11 @@
 ---
 id: 66
 title: Clean up dead exports and CLI duplication
-state: Todo
+state: Done
 parent: 67
 labels: [health]
 created: 2026-07-30T14:27:04Z
-updated: 2026-07-30T14:39:52Z
+updated: 2026-07-30T18:04:26Z
 ---
 
 ## Description
@@ -47,3 +47,42 @@ The shared part is real and worth extracting: the per-shard read, strip, rewrite
 tombstone append must stay in rewriteShards alone.
 
 Caught by /code-review, which checked the claim against the code instead of taking the note at face value.
+
+### 2026-07-30T18:04:26Z — claude (agent)
+
+All five plan steps done, and the dead-code check is the headline: fallow analyze now reports zero issues
+across every category, from ten.
+
+Both "genuinely dead" claims verified before deleting rather than taken from the report. byId in list.ts was
+exported with no callers anywhere — and its doc comment claimed it was "shared by show and tree", which is
+false and is probably why it read as alive. IssueStore.openBlockers had no `.openBlockers(` call outside its
+own class; the widely-used openBlockers is the core function it delegated to, not the method, so the two are
+easy to confuse in a grep. Removing the method made its import unused too.
+
+Un-exported: candidateBinLinks, NotInstalledError, COMPLETION_FLAG, recordPath, ReleaseLookupError,
+INSTRUCTIONS, NO_PROJECT, stateWidth. Two were not shaped as the plan assumed — NotInstalledError and
+INSTRUCTIONS were declared unexported and re-exported at the bottom of their files, so only the re-export
+needed removing.
+
+Step 3, the prune one with the warning on it. Extracted stripEventsFromShards: the per-shard read, strip,
+rewrite-or-delete loop, and nothing else. The tombstone append stays in rewriteShards alone, with a comment
+saying why so the next reader does not merge them.
+
+The 545 tests do not verify that, and it would have been wrong to claim they did — prune.ts is at 7%
+coverage and nothing tests these two functions. So I checked it by hand end to end. A real prune wrote 2
+tombstones and `motte restore 1` brought the issue back with its title intact. A --events-only prune left
+the issue on disk, wrote zero tombstones, and restore correctly refused with "no tombstone was found for
+#1". Both halves of the guarantee hold.
+
+Step 4: subtreeOf now lives in core/tree.ts beside flattenTree, replacing an identical IIFE in the CLI tree
+command and the MCP tree tool.
+
+One honest caveat on the audit. It returns fail with 8 findings marked introduced, and none of them are
+new. Every one has an identical score in the health measurement I took before starting this epic — prune 420,
+upgrade 182, list 33, status 46.9, releases 110, candidateBinLinks 72. The attribution is an artifact of
+touching the files: candidateBinLinks moved from column 7 to column 0 by losing its `export` keyword, and
+the prune handlers shifted 20 lines down. In upgrade.ts and releases.ts the only diff is the word `export`;
+status.ts's handler actually got simpler. I am not treating the fail as a blocker, and I would rather write
+down why than quietly re-run until it passes.
+
+Left behind deliberately: two clone groups between deps.ts and mcp/tools/reads.ts, filed as #0074.

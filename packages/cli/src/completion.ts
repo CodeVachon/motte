@@ -242,7 +242,7 @@ export function isZshShell(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /** The flag the shell scripts use to ask for completions. */
-export const COMPLETION_FLAG = "--get-yargs-completions";
+const COMPLETION_FLAG = "--get-yargs-completions";
 
 /**
  * Recover the words the shell actually sent, from the raw process arguments.

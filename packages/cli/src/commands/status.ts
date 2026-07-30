@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs";
 import {
     blocked,
     buildTree,
+    subtreeOf,
     epicReports,
     flattenTree,
     openBlockers,
@@ -133,14 +134,7 @@ export const treeCommand: CommandModule<{}, TreeArgs> = {
         const issues = store.all();
         const { roots, problems } = buildTree(issues);
 
-        const scope =
-            args.ref === undefined
-                ? roots
-                : (() => {
-                      const target = store.resolve(args.ref);
-                      const found = flattenTree(roots).find((node) => node.issue.id === target.id);
-                      return found === undefined ? [] : [found];
-                  })();
+        const scope = args.ref === undefined ? roots : subtreeOf(roots, store.resolve(args.ref).id);
 
         if (args.json === true) {
             const serialize = (node: (typeof scope)[number]): unknown => ({

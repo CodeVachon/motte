@@ -304,7 +304,7 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
  * Only links that actually resolve into `root` are removed. A `motte` on PATH from a different
  * installation, or from a package manager, is not ours to delete.
  */
-export function candidateBinLinks(root: string): string[] {
+function candidateBinLinks(root: string): string[] {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
     const dirs = [process.env.MOTTE_BIN_DIR, join(home, ".local", "bin"), join(home, "bin")].filter(
         (dir): dir is string => dir !== undefined && dir.length > 0
@@ -327,5 +327,3 @@ export function candidateBinLinks(root: string): string[] {
 
     return [...new Set(links)];
 }
-
-export { NotInstalledError };

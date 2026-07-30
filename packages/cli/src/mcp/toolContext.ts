@@ -73,5 +73,3 @@ export function toolContext(server: McpServer, options: ServerOptions): ToolCont
             }
     };
 }
-
-export { NO_PROJECT };

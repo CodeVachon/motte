@@ -93,6 +93,7 @@ export {
     buildTree,
     descendants,
     flattenTree,
+    subtreeOf,
     type TreeNode,
     type TreeProblem,
     type TreeResult

@@ -27,7 +27,7 @@ export function paintId(id: number): string {
 }
 
 /** Longest state name in the config, so state columns line up. */
-export function stateWidth(config: Config): number {
+function stateWidth(config: Config): number {
     return Math.max(...config.states.map((state) => state.name.length));
 }
 

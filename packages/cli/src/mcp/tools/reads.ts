@@ -2,8 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
     buildTree,
+    subtreeOf,
     epicReports,
-    flattenTree,
     openBlockers,
     projectReport,
     ready,
@@ -158,15 +158,7 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
             });
 
             const scope =
-                args.ref === undefined
-                    ? roots
-                    : (() => {
-                          const target = store.resolve(args.ref);
-                          const found = flattenTree(roots).find(
-                              (node) => node.issue.id === target.id
-                          );
-                          return found === undefined ? [] : [found];
-                      })();
+                args.ref === undefined ? roots : subtreeOf(roots, store.resolve(args.ref).id);
 
             return text({
                 roots: scope.map(serialize),

@@ -126,6 +126,17 @@ export function flattenTree(roots: TreeNode[]): TreeNode[] {
     return out;
 }
 
+/**
+ * Just `id`'s subtree, as a forest of one — or an empty forest when it is not in `roots`.
+ *
+ * Lets a caller narrow a whole-project tree to one issue without special-casing the shape of what it
+ * renders. `status` and the MCP `tree` tool each had their own identical copy of this.
+ */
+export function subtreeOf(roots: TreeNode[], id: number): TreeNode[] {
+    const found = flattenTree(roots).find((node) => node.issue.id === id);
+    return found === undefined ? [] : [found];
+}
+
 /** Every descendant of `id`, not including `id` itself. */
 export function descendants(issues: Issue[], id: number): Issue[] {
     const byParent = new Map<number, Issue[]>();

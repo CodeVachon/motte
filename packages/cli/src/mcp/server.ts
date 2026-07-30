@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { VERSION } from "../version.js";
-import { toolContext, NO_PROJECT, type ServerOptions } from "./toolContext.js";
+import { toolContext, type ServerOptions } from "./toolContext.js";
 import { registerReadTools } from "./tools/reads.js";
 import { registerWriteTools } from "./tools/writes.js";
 import { registerBreakdownTool } from "./tools/breakdown.js";
@@ -54,4 +54,4 @@ export function createMotteServer(options: ServerOptions = {}): McpServer {
     return server;
 }
 
-export { INSTRUCTIONS, NO_PROJECT, type ServerOptions };
+export type { ServerOptions };

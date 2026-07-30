@@ -31,3 +31,7 @@
 {"at":"2026-07-30T17:51:16Z","id":65,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
 {"at":"2026-07-30T17:51:59Z","id":64,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T17:55:49Z","id":64,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T17:56:38Z","id":66,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-07-30T18:04:25Z","id":74,"by":"claude","as":"agent","type":"created","title":"Share the issue-filtering logic between deps and the MCP reads","state":"Todo"}
+{"at":"2026-07-30T18:04:26Z","id":66,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T18:04:48Z","id":67,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

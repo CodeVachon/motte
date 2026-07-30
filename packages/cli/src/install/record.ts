@@ -33,7 +33,7 @@ interface RecordFile {
  * Under the install root rather than in the project, because the wiring it describes can be
  * user-scoped and therefore has nothing to do with any one project.
  */
-export function recordPath(): string {
+function recordPath(): string {
     const root =
         process.env.MOTTE_INSTALL_DIR ??
         join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".motte");

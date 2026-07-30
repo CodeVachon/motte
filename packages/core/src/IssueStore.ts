@@ -11,7 +11,7 @@ import {
 import { join } from "node:path";
 import { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
 import { resolveState, type Config } from "./config.js";
-import { blocked, blocks, findDependencyCycle, openBlockers, ready } from "./deps.js";
+import { blocked, blocks, findDependencyCycle, ready } from "./deps.js";
 import {
     appendEvents,
     eventsDir,
@@ -441,11 +441,6 @@ export class IssueStore {
     /** Not settled, and waiting on at least one unsettled blocker. */
     blocked(): Issue[] {
         return blocked(this.config, this.all());
-    }
-
-    openBlockers(id: number): Issue[] {
-        const issues = this.all();
-        return openBlockers(this.config, issues, this.require(id));
     }
 
     addNote(id: number, body: string, author: AuthorOptions | Author = {}): Issue {

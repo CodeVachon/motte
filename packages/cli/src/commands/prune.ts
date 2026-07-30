@@ -67,18 +67,29 @@ function requireCleanRepository(config: Config): string {
 }
 
 /** Rewrite the shards without the pruned issues' events, then append their tombstones. */
-function rewriteShards(config: Config, pruned: Issue[], commit: string): number {
-    const dir = eventsDir(config.root);
-    const ids = new Set(pruned.map((issue) => issue.id));
-    let removed = 0;
-
+/**
+ * Strip every event for `ids` from each shard, deleting a shard that ends up empty. Returns how many
+ * event lines went.
+ *
+ * The one thing `rewriteShards` and `rewriteShardsEventsOnly` genuinely share. They are NOT merged, and
+ * must not be: `rewriteShards` goes on to append `pruned` tombstones, and `rewriteShardsEventsOnly`
+ * deliberately does not, because `--events-only` strips history while leaving the issues on disk.
+ * Writing tombstones there would make `motte restore` offer to restore issues that were never pruned;
+ * dropping them from the real prune would break restore entirely and make prune destructive. That
+ * guarantee is the whole reason #0058 exists.
+ *
+ * A missing directory returns 0 rather than throwing, which both callers relied on separately before.
+ */
+function stripEventsFromShards(dir: string, ids: Set<number>): number {
     let names: string[] = [];
     try {
         names = readdirSync(dir).filter((name) => name.endsWith(".ndjson"));
     } catch {
         // No log to rewrite.
-        names = [];
+        return 0;
     }
+
+    let removed = 0;
 
     for (const name of names) {
         const path = join(dir, name);
@@ -91,9 +102,18 @@ function rewriteShards(config: Config, pruned: Issue[], commit: string): number 
         else writeFileSync(path, `${kept.join("\n")}\n`, "utf8");
     }
 
+    return removed;
+}
+
+function rewriteShards(config: Config, pruned: Issue[], commit: string): number {
+    const dir = eventsDir(config.root);
+    const removed = stripEventsFromShards(dir, new Set(pruned.map((issue) => issue.id)));
+
     const author = resolveAuthor({ cwd: config.root });
     const at = timestamp();
 
+    // The tombstones. Deliberately here and not in the shared helper: they are what makes a prune
+    // recoverable, and `--events-only` must not write them.
     const tombstones: Event[] = pruned.map((issue) => ({
         at,
         id: issue.id,
@@ -266,28 +286,8 @@ export const pruneCommand: CommandModule<{}, PruneArgs> = {
 
 /** `--events-only`: drop events for settled issues without removing the issues. */
 function rewriteShardsEventsOnly(config: Config, settled: Issue[]): number {
-    const dir = eventsDir(config.root);
-    const ids = new Set(settled.map((issue) => issue.id));
-    let removed = 0;
-
-    let names: string[] = [];
-    try {
-        names = readdirSync(dir).filter((name) => name.endsWith(".ndjson"));
-    } catch {
-        return 0;
-    }
-
-    for (const name of names) {
-        const path = join(dir, name);
-        const lines = readFileSync(path, "utf8").split("\n");
-        const kept = stripEventsFor(lines, ids);
-        removed += lines.filter((line) => line.trim().length > 0).length - kept.length;
-
-        if (kept.length === 0) rmSync(path, { force: true });
-        else writeFileSync(path, `${kept.join("\n")}\n`, "utf8");
-    }
-
-    return removed;
+    // No tombstones: `--events-only` leaves the issues in place, so there is nothing to restore.
+    return stripEventsFromShards(eventsDir(config.root), new Set(settled.map((issue) => issue.id)));
 }
 
 interface RestoreArgs {
