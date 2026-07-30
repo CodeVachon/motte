@@ -5,7 +5,7 @@ state: Done
 parent: 67
 labels: [cli, testing, bug]
 created: 2026-07-30T16:03:17Z
-updated: 2026-07-30T16:29:11Z
+updated: 2026-07-30T16:37:25Z
 ---
 
 ## Description
@@ -57,3 +57,24 @@ would still leave about one run in eight red across 35 tests.
 What is not fixed: why an ordinary bun spawn occasionally never returns on a GitHub runner. #0073 proposes
 removing the exposure entirely by running the CLI in-process, which would also fix the coverage attribution
 fallow keeps flagging. Until then the retry keeps CI honest rather than silent — a stall still prints.
+
+### 2026-07-30T16:37:25Z — claude (agent)
+
+Verified against real CI rather than in principle: four consecutive runs green, where before the fix two
+of three failed.
+
+Better than green, one of those runs demonstrably absorbed a stall. In attempt 4, "the everyday sequence >
+assigns and unassigns" reported 21373ms while every other test in the file ran between 200ms and 1800ms —
+it hit the 20s bound, retried, and passed. The run took 48s against a 28s baseline, which is the stall plus
+the retry, and it is the mechanism working end to end.
+
+One lead for #0073, offered as an observation rather than a conclusion. "assigns and unassigns" is also one
+of the two tests that stalled in the run that first exposed this. Twice out of two could easily be
+coincidence at this sample size, but if it recurs, note that what these two have in common is position in
+the sequence rather than the command — the other stall was `motte add First`, and this one is `motte init`
+in a beforeEach. If the stall correlates with how far into the file the run has got, that points at
+accumulated process or file-descriptor pressure rather than anything about the command itself.
+
+Also worth writing down: my first attempt to check for absorbed stalls grepped the CI log for "stalled"
+and found four hits per run, which I briefly took as signal. They were all the word "installed" from
+`bun install`. Caught it by printing the matching lines instead of the count.
