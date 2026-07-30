@@ -19,3 +19,4 @@
 {"at":"2026-07-30T15:19:20Z","id":70,"by":"claude","as":"agent","type":"created","title":"A label containing a comma broke the round trip","state":"In Progress"}
 {"at":"2026-07-30T15:19:20Z","id":70,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T15:39:47Z","id":71,"by":"claude","as":"agent","type":"created","title":"Document the issue workflow as a skill","state":"Done"}
+{"at":"2026-07-30T16:03:17Z","id":72,"by":"claude","as":"agent","type":"created","title":"cli.test.ts hangs intermittently on CI","state":"Todo"}
