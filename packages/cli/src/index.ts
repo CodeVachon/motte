@@ -175,6 +175,21 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
     await cli.parseAsync();
 }
 
+/**
+ * The entry point, error handling included.
+ *
+ * Exported so tests can drive the CLI in-process through exactly the path the binary takes. Calling
+ * `run` directly would skip `report`, which is where every expected error becomes a clean line and an
+ * exit code — the behaviour most worth testing.
+ */
+export async function main(argv: string[] = hideBin(process.argv)): Promise<void> {
+    try {
+        await run(argv);
+    } catch (thrown) {
+        report(thrown);
+    }
+}
+
 if (import.meta.main) {
-    run().catch(report);
+    void main();
 }

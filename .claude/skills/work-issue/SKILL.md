@@ -87,8 +87,10 @@ Notes on each:
   the concurrent file writes have caused two transient test failures here.
 - **Lint** — there is no ESLint in this repo. `bun run typecheck` (`tsc --noEmit`, strict) is the
   lint. Treat a type error as a lint failure, never as something to cast away.
-- **Tests** — `bun run test`. The suite is ~35s because `packages/cli/src/cli.test.ts` spawns the
-  real CLI per assertion; that is deliberate.
+- **Tests** — `bun run test`, about 15s. `packages/cli/src/cli.test.ts` drives the CLI in-process
+  through `main(argv)`; only its `wiring` block spawns a real process, for the few things that need
+  one. If you add a spawning test, bound it — `spawnSync` blocks the worker thread, so vitest's
+  `testTimeout` cannot interrupt it and a stuck child hangs the whole run.
 - **doctor** — `bun run doctor` validates this repo's own backlog: duplicate ids, cycles, unknown
   states, round-trip integrity, stale work. CI runs it too, so a red doctor is a red build.
 

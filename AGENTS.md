@@ -70,7 +70,13 @@ works as well as `motte show 12`.
   equivalents (`node:zlib`, `node:crypto`, `node:http`) in library code — they work identically under
   Bun. Bun APIs are fine in `scripts/`, which only ever runs under Bun.
 - `.motte/` must never be added to `.gitignore`.
-- `packages/cli/src/cli.test.ts` spawns the real CLI as a subprocess per assertion. That is deliberate —
-  wiring and exit codes are what actually break — but it makes the suite ~35s rather than ~4s, and those
-  tests get no coverage attribution because v8 coverage does not follow subprocesses. A low headline
-  coverage number for `packages/cli/src/commands/` does **not** mean those paths are unexercised.
+- `packages/cli/src/cli.test.ts` drives the CLI in-process through the exported `main(argv)`, which is
+  the same function the binary calls. Only its `wiring` block spawns a real process, for the few things
+  that need one: a true exit status, a shell pipeline that closes the pipe, and the entry point being
+  wired up at all.
+- If you add a test that spawns, bound it. `spawnSync` blocks the worker thread, so vitest's
+  `testTimeout` cannot interrupt it and a stuck child hangs the entire run — that cost an eighteen-minute
+  CI job before the bound existed.
+- A command may signal failure either by calling `process.exit` or by assigning `process.exitCode`; both
+  are in use. Anything driving the CLI in-process has to read both, or every failing command looks like
+  a success.
