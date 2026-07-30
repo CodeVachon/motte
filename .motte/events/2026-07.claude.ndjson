@@ -44,3 +44,6 @@
 {"at":"2026-07-30T18:40:02Z","id":26,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T18:44:14Z","id":26,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T19:01:17Z","id":77,"by":"claude","as":"agent","type":"created","title":"Verify the Windows asset before publishing a release","state":"Done"}
+{"at":"2026-07-30T19:46:09Z","id":33,"by":"claude","as":"agent","type":"title","from":"Bun.serve API and SSE watcher","to":"Serve API and SSE watcher"}
+{"at":"2026-07-30T19:46:09Z","id":33,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-07-30T19:46:09Z","id":6,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}

@@ -1,10 +1,10 @@
 ---
 id: 6
 title: Web interface
-state: Todo
+state: In Progress
 labels: [web]
 created: 2026-07-29T11:25:00Z
-updated: 2026-07-29T11:25:00Z
+updated: 2026-07-30T19:46:09Z
 ---
 
 ## Description

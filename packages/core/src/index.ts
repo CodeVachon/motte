@@ -135,3 +135,10 @@ export {
     type Note,
     type UnknownSection
 } from "./schema/issue.js";
+export {
+    watchBacklog,
+    type BacklogChange,
+    type DirWatcher,
+    type WatchFactory,
+    type WatchOptions
+} from "./watch.js";
