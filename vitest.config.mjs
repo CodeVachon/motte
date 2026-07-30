@@ -10,6 +10,17 @@ export default defineConfig({
     },
     test: {
         globals: true,
-        include: ["packages/*/src/**/*.test.ts"]
+        include: ["packages/*/src/**/*.test.ts"],
+        coverage: {
+            /**
+             * Scoped to product source on purpose.
+             *
+             * Vitest's default include sweeps in `scripts/` and anything else in the repo, so a
+             * headline coverage number would move whenever an untested build script is added — for
+             * reasons that have nothing to do with test quality.
+             */
+            include: ["packages/*/src/**/*.ts"],
+            exclude: ["**/*.test.ts", "**/generated/**"]
+        }
     }
 });

@@ -8,3 +8,8 @@
 {"at":"2026-07-30T14:27:04Z","id":64,"by":"claude","as":"agent","type":"created","title":"Split createMotteServer","state":"Todo"}
 {"at":"2026-07-30T14:27:04Z","id":65,"by":"claude","as":"agent","type":"created","title":"Reduce complexity in the doctor handler","state":"Todo"}
 {"at":"2026-07-30T14:27:04Z","id":66,"by":"claude","as":"agent","type":"created","title":"Clean up dead exports and CLI duplication","state":"Todo"}
+{"at":"2026-07-30T14:39:51Z","id":67,"by":"claude","as":"agent","type":"created","title":"Code health follow-ups","state":"Todo"}
+{"at":"2026-07-30T14:39:52Z","id":64,"by":"claude","as":"agent","type":"parent","from":5,"to":67}
+{"at":"2026-07-30T14:39:52Z","id":65,"by":"claude","as":"agent","type":"parent","from":3,"to":67}
+{"at":"2026-07-30T14:39:52Z","id":66,"by":"claude","as":"agent","type":"parent","from":null,"to":67}
+{"at":"2026-07-30T14:39:52Z","id":68,"by":"claude","as":"agent","type":"created","title":"doctor: warn when a settled issue has unsettled children","state":"Todo"}

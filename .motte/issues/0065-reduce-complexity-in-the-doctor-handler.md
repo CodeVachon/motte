@@ -2,10 +2,10 @@
 id: 65
 title: Reduce complexity in the doctor handler
 state: Todo
-parent: 3
+parent: 67
 labels: [cli, health]
 created: 2026-07-30T14:27:04Z
-updated: 2026-07-30T14:27:04Z
+updated: 2026-07-30T14:39:52Z
 ---
 
 ## Description

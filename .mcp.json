@@ -3,9 +3,6 @@
     "motte": {
       "command": "motte",
       "args": ["mcp"]
-    },
-    "fallow": {
-      "command": "fallow-mcp"
     }
   }
 }

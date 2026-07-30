@@ -5,7 +5,7 @@ state: Todo
 parent: 3
 labels: [cli, testing]
 created: 2026-07-29T16:04:10Z
-updated: 2026-07-30T14:27:04Z
+updated: 2026-07-30T14:39:24Z
 ---
 
 ## Description
@@ -41,3 +41,21 @@ The core is fine. The CLI layer is the whole problem, and it is the one surface 
 Also worth recording: the test:coverage script has been in package.json since the scaffold but was never
 runnable — @vitest/coverage-v8 was not installed. Fixed. Note that the provider must match vitest's major
 version; coverage-v8@4 fails against vitest@3 with a confusing BaseCoverageProvider export error.
+
+### 2026-07-30T14:39:24Z — claude (agent)
+
+Correction to my note above: "every one of the twelve files under packages/cli/src/commands/ at exactly
+0%" is wrong. Eleven are at 0%. commands/log.ts is at 20.8%, because log.test.ts covers parseSince and
+formatDuration, which live in that file. The "completely unexercised" characterisation of log 702 inherits
+the same error.
+
+My own coverage output showed this — log.ts was absent from the zero-coverage list I printed — and I did
+not read it carefully enough before writing the note down.
+
+Two better framings of the same data, now that coverage is scoped to packages/*/src:
+
+Statements 51.6%, but branches 91% and functions 82.5%. The code that actually runs under test is well
+covered; the statement figure is dominated by whole files no test ever imports. The gap is not
+half-tested code, it is eleven entirely unloaded command modules.
+
+Whoever picks this up should expect a partial head start in log.ts, not a clean slate of twelve.
