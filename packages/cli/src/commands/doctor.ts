@@ -182,6 +182,11 @@ export function issueFileProblems(config: Config, issues: readonly Issue[]): Pro
     return problems;
 }
 
+/** "1 issue" rather than "1 issues" — `list` already gets this right, `doctor` did not. */
+function countIssues(count: number): string {
+    return `${count} issue${count === 1 ? "" : "s"}`;
+}
+
 function render(problems: readonly Problem[], checked: number): void {
     const out = process.stdout;
     const errors = problems.filter((problem) => problem.severity === "error");
@@ -195,12 +200,12 @@ function render(problems: readonly Problem[], checked: number): void {
     }
 
     if (problems.length === 0) {
-        out.write(`${ok(`${checked} issues, no problems found`)}\n`);
+        out.write(`${ok(`${countIssues(checked)}, no problems found`)}\n`);
         return;
     }
 
     out.write(
-        `\n${dim(`${checked} issues checked · ${errors.length} error(s) · ${warnings.length} warning(s)`)}\n`
+        `\n${dim(`${countIssues(checked)} checked · ${errors.length} error(s) · ${warnings.length} warning(s)`)}\n`
     );
 }
 

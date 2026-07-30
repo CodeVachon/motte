@@ -248,3 +248,20 @@ describe("issueFileProblems", () => {
         expect(problems.filter((problem) => problem.kind === "filename")).toEqual([]);
     });
 });
+
+/**
+ * Found by reading the Windows CI output rather than its exit code: a freshly installed project reported
+ * "1 issues, no problems found". `list` pluralises, `doctor` did not.
+ */
+describe("the summary line", () => {
+    it("pluralises the issue count", async () => {
+        const { initialised, motte } = await import("../testing/cli.js");
+        const root = await initialised();
+
+        await motte(root, ["add", "Only one", "-d", "x"]);
+        expect((await motte(root, ["doctor"])).stdout).toContain("1 issue,");
+
+        await motte(root, ["add", "And another", "-d", "y"]);
+        expect((await motte(root, ["doctor"])).stdout).toContain("2 issues,");
+    });
+});
