@@ -39,3 +39,5 @@
 {"at":"2026-07-30T18:13:08Z","id":76,"by":"claude","as":"agent","type":"created","title":"Test upgrade and the release lookup","state":"Todo"}
 {"at":"2026-07-30T18:13:08Z","id":75,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-07-30T18:19:30Z","id":75,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T18:20:00Z","id":76,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-07-30T18:25:18Z","id":76,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

@@ -109,7 +109,11 @@ export const upgradeCommand: CommandModule<{}, UpgradeArgs> = {
         const wanted =
             args.target === undefined
                 ? await (async () => {
-                      const latest = await resolveLatestVersion();
+                      // Normalised, like the explicitly-passed branch below. Every comparison here
+                      // assumes the `vX.Y.Z` form — `compareVersionsDescending` is anchored on `^v` — so
+                      // a release tagged `0.3.0` rather than `v0.3.0` parsed as 0.0.0 and reported a
+                      // newer version as a downgrade, then offered to install it anyway.
+                      const latest = normalizeVersion(await resolveLatestVersion());
                       recordCheck(install.root, latest);
                       return latest;
                   })()
