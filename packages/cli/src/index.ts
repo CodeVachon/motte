@@ -17,6 +17,7 @@ import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { listCommand } from "./commands/list.js";
 import { logCommand } from "./commands/log.js";
+import { PruneError, pruneCommand, restoreCommand } from "./commands/prune.js";
 import {
     addCommand,
     assignCommand,
@@ -40,6 +41,7 @@ export { VERSION } from "./version.js";
  */
 const EXPECTED_ERRORS = [
     AgentConfigError,
+    PruneError,
     AmbiguousRefError,
     ConfigError,
     CycleError,
@@ -109,6 +111,8 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(statusCommand)
         .command(treeCommand)
         .command(logCommand)
+        .command(pruneCommand)
+        .command(restoreCommand)
         .command(doctorCommand)
         .command(mcpCommand)
         .command(installCommand)

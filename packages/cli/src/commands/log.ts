@@ -126,6 +126,7 @@ interface LogArgs {
     since?: string;
     limit?: number;
     notes?: boolean;
+    pruned?: boolean;
     json?: boolean;
 }
 
@@ -149,9 +150,42 @@ export const logCommand: CommandModule<{}, LogArgs> = {
                 default: true,
                 describe: "Include notes alongside transitions (--no-notes for transitions only)"
             })
+            .option("pruned", {
+                type: "boolean",
+                describe: "List tombstones — issues that were pruned and can be restored"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
+
+        // Tombstones are the only record a pruned issue leaves, so they need their own view: nothing
+        // else would surface them, and `motte restore` is useless without knowing what to restore.
+        if (args.pruned === true) {
+            const tombstones = store.events().events.filter((event) => event.type === "pruned");
+
+            if (args.json === true) {
+                emitJson({ count: tombstones.length, tombstones });
+                return;
+            }
+
+            if (tombstones.length === 0) {
+                process.stdout.write(`${dim("nothing has been pruned")}\n`);
+                return;
+            }
+
+            for (const stone of tombstones) {
+                if (stone.type !== "pruned") continue;
+                process.stdout.write(
+                    `${dim(stone.at.slice(0, 10))}  ${paintId(stone.id)} ${stone.title} ` +
+                        `${dim(`[${stone.finalState}]`)}  ${dim(`restore from ${stone.commit}`)}\n`
+                );
+            }
+
+            process.stdout.write(
+                `\n${dim(`${tombstones.length} pruned — \`motte restore <id>\` brings one back`)}\n`
+            );
+            return;
+        }
 
         const since = args.since === undefined ? undefined : parseSince(args.since);
         const issues = store.all();

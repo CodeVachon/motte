@@ -61,6 +61,30 @@ export {
 
 export { EventSchema, TRANSITION_TYPES, type Event, type EventType } from "./schema/event.js";
 
+export {
+    commitBeforeDeletion,
+    dirtyPaths,
+    GitError,
+    hasCommits,
+    headSha,
+    isRepository,
+    repoRelative,
+    revisionExists,
+    statusPath,
+    showAtRevision
+} from "./git.js";
+
+export {
+    describeSkip,
+    parseCutoff,
+    planPrune,
+    settledAt,
+    stripEventsFor,
+    type PrunePlan,
+    type SkipReason,
+    type Skipped
+} from "./prune.js";
+
 export { idFromFilename, ID_PAD, issueFilename, padId, slugify } from "./slug.js";
 
 export { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";

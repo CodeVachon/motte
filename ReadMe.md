@@ -158,6 +158,31 @@ impossible rather than merely rare.
 
 Set `"events": { "enabled": false }` in the config to turn it off.
 
+### Pruning old work
+
+```bash
+motte prune --before 90d --dry-run   # what would go, and why anything is kept
+motte prune --before 2026-01 --yes
+motte log --pruned                   # what can be brought back
+motte restore 12
+```
+
+Never automatic — it deletes committed files, so it only happens when you ask, and `--before` has no
+default. Each pruned issue leaves a **tombstone** recording the commit it can be recovered from, which is
+what makes `motte restore` possible.
+
+Three rules keep it safe, and each will refuse rather than guess:
+
+- **A dirty backlog is refused.** The tombstone records `HEAD`, so uncommitted changes would make it
+  point at content the commit does not have.
+- **Anything a surviving issue still references is kept.** Removing it would leave a dangling `parent` or
+  `blockedBy` — so pruning would trade disk space for a permanently broken backlog. A settled subtree
+  goes whole or not at all, and `motte doctor` stays clean by construction.
+- **Age is measured from when work actually stopped**, taken from the event log, not from `updated` —
+  which moves on any edit, so a finished issue that later gets a note would never age out.
+
+Commit a prune on its own: rewriting the event shards is the one operation that is not an append.
+
 ## What an issue looks like
 
 `.motte/issues/0042-design-the-schema.md`:

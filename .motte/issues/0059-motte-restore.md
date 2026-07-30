@@ -1,12 +1,12 @@
 ---
 id: 59
 title: motte restore
-state: Todo
+state: Done
 parent: 55
 labels: [cli, core]
 blockedBy: [58]
 created: 2026-07-29T20:19:00Z
-updated: 2026-07-29T20:19:00Z
+updated: 2026-07-30T13:48:56Z
 ---
 
 ## Description
@@ -47,3 +47,22 @@ something.
 
 Restoring cannot bring back the pruned events, only the issue. Worth stating in the output, since a
 restored issue with no history looks like a bug otherwise.
+
+### 2026-07-30T13:48:56Z — claude (agent)
+
+Done, alongside #0058 — the two are useless apart, since a tombstone nothing acts on is just deletion
+with extra steps.
+
+motte restore <id> finds the tombstone, recovers the content with git show, writes the file back and
+records a restored event. motte log --pruned lists what can be brought back, because nothing else would
+surface a tombstone.
+
+Both failure modes are handled rather than left to a stack trace. A reused id is refused with the git
+command to recover the content by hand — ids come from max(existing) + 1, so pruning the
+highest-numbered issue frees its number for the next motte add, and restoring over a live issue would
+overwrite real work. An unreachable commit falls back to searching for the deletion by path across all
+refs, and if that fails too it says plainly that the content is unrecoverable rather than half-restoring
+something.
+
+The output states that the issue's own events are gone and only the tombstone survived, because a
+restored issue with no history otherwise looks like a bug.

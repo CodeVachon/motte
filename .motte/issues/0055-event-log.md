@@ -1,10 +1,10 @@
 ---
 id: 55
 title: Event log
-state: In Progress
+state: Done
 labels: [core, reports]
 created: 2026-07-29T20:15:00Z
-updated: 2026-07-30T12:47:07Z
+updated: 2026-07-30T13:48:56Z
 ---
 
 ## Description
@@ -58,3 +58,7 @@ shelling out, and present before anything is committed.
 ### 2026-07-30T12:47:07Z — claude (agent)
 
 Recording (#0056) and reporting (#0057) are done. Remaining children are #0058 prune and #0059 restore, which are maintenance rather than capability — the log is fully usable without them, and the web UI can consume it now.
+
+### 2026-07-30T13:48:56Z — claude (agent)
+
+Epic complete: recording (#0056), reporting (#0057), pruning (#0058) and restoring (#0059).
