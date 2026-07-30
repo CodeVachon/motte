@@ -13,6 +13,7 @@ import { doctorCommand } from "./commands/doctor.js";
 import { completionCandidates, formatCandidates, isZshShell, wordsFromArgv } from "./completion.js";
 import { context } from "./context.js";
 import { initCommand } from "./commands/init.js";
+import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { listCommand } from "./commands/list.js";
 import {
@@ -23,6 +24,7 @@ import {
     noteCommand
 } from "./commands/mutate.js";
 import { showCommand } from "./commands/show.js";
+import { AgentConfigError } from "./install/agents.js";
 import { EditorError } from "./ui/editor.js";
 import { statusCommand, treeCommand } from "./commands/status.js";
 import { uninstallCommand, upgradeCommand } from "./commands/upgrade.js";
@@ -36,6 +38,7 @@ export { VERSION } from "./version.js";
  * single clean line rather than a stack trace, because they are the user's problem to fix, not a bug.
  */
 const EXPECTED_ERRORS = [
+    AgentConfigError,
     AmbiguousRefError,
     ConfigError,
     CycleError,
@@ -106,6 +109,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(treeCommand)
         .command(doctorCommand)
         .command(mcpCommand)
+        .command(installCommand)
         .command(upgradeCommand)
         .command(uninstallCommand)
         // Four parameters selects yargs' "fallback" completion form: ours runs first, and calling

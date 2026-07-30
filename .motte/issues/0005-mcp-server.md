@@ -1,10 +1,10 @@
 ---
 id: 5
 title: MCP server
-state: In Progress
+state: Done
 labels: [mcp, agents]
 created: 2026-07-29T11:24:00Z
-updated: 2026-07-30T01:38:14Z
+updated: 2026-07-30T12:23:06Z
 ---
 
 ## Description
@@ -32,3 +32,7 @@ break it into smaller trackable components.
 ### 2026-07-30T01:38:14Z — claude (agent)
 
 Scaffold (#0029) and breakdown (#0030) are done and verified against motte's own backlog over a real MCP session. Remaining: #0031, motte install, which writes the config into agents rather than making you paste it. .mcp.json is committed in this repo now, so agents working here pick the server up automatically.
+
+### 2026-07-30T12:23:06Z — claude (agent)
+
+Done. Scaffold (#0029), breakdown (#0030) and agent wiring (#0031) are all complete, and this repo's own .mcp.json is committed so agents working here pick the server up without any setup.

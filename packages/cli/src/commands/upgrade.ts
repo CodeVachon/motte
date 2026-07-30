@@ -12,6 +12,7 @@ import {
     type BundleInstall
 } from "../install/layout.js";
 import { resolveLatestVersion } from "../install/releases.js";
+import { forgetRecord, readRecord, unwire } from "../install/record.js";
 import { emitJson } from "../context.js";
 import { dim, ok, warn } from "../ui/format.js";
 
@@ -214,24 +215,61 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
             })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
-        const install = requireInstall();
+        // Agent wiring is removed first and independently of the CLI, so --keep-cli works even when
+        // motte is not running from a managed installation.
+        const wiring = readRecord();
+        const unwired = wiring.map(unwire);
 
-        // `motte install` does not exist yet (#0031), so there is no wiring to remove. Saying so is
-        // better than reporting success for work that was never done.
+        const describeUnwired = () =>
+            unwired
+                .map((outcome) => {
+                    const where = outcome.entry.path ?? outcome.entry.agent;
+                    switch (outcome.result) {
+                        case "deleted-file":
+                            return `${ok(`removed ${where}`)}\n`;
+                        case "removed-key":
+                            return `${ok(`removed the motte entry from ${where}`)}\n`;
+                        case "delegated":
+                            return `${warn(`${outcome.entry.agent}: ${outcome.detail}`)}\n`;
+                        case "failed":
+                            return `${warn(`could not update ${where}: ${outcome.detail}`)}\n`;
+                        default:
+                            return `${dim(`${where} was already clean`)}\n`;
+                    }
+                })
+                .join("");
+
         if (args.keepCli === true) {
-            process.stdout.write(
-                `${warn("nothing to do — agent wiring is not implemented yet (#0031)")}\n` +
-                    `${dim("  Remove the `motte` entry from .mcp.json or ~/.codex/config.toml by hand.")}\n`
-            );
+            if (wiring.length === 0) {
+                process.stdout.write(
+                    `${dim("no agent wiring was recorded, so there is nothing to remove")}\n` +
+                        `${dim("  If you configured an agent by hand, remove the `motte` entry the same way.")}\n`
+                );
+                return;
+            }
+
+            process.stdout.write(describeUnwired());
+            forgetRecord();
+
+            if (args.json === true) {
+                emitJson({ unwired: unwired.map((o) => ({ ...o.entry, result: o.result })) });
+            }
             return;
         }
 
+        const install = requireInstall();
         const binLinks = candidateBinLinks(install.root);
 
         if (args.yes !== true) {
             process.stdout.write(
                 `${warn(`this will remove ${install.root}`)}\n` +
                     binLinks.map((link) => `${dim(`  and the symlink ${link}`)}\n`).join("") +
+                    wiring
+                        .map(
+                            (entry) =>
+                                `${dim(`  and motte's entry in ${entry.path ?? entry.agent}`)}\n`
+                        )
+                        .join("") +
                     `\n${dim("Your projects' .motte/ backlogs are untouched — only the installation is removed.")}\n` +
                     `${dim("Re-run with --yes to proceed.")}\n`
             );
@@ -239,11 +277,16 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
             return;
         }
 
+        process.stdout.write(describeUnwired());
+
         for (const link of binLinks) rmSync(link, { force: true });
         rmSync(install.root, { recursive: true, force: true });
 
         if (args.json === true) {
-            emitJson({ removed: [install.root, ...binLinks] });
+            emitJson({
+                removed: [install.root, ...binLinks],
+                unwired: unwired.map((o) => ({ ...o.entry, result: o.result }))
+            });
             return;
         }
 

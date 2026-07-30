@@ -205,9 +205,17 @@ leaves the denominator entirely, so abandoning an issue does not permanently cap
 ## Agents
 
 ```bash
-motte mcp --print-config    # snippet for Claude Code or Codex CLI
-motte mcp                   # run the server (agents launch this for you)
+motte install               # wire the server into the agents on this machine
+motte install --dry-run     # see what it would write first
+motte mcp --print-config    # or paste the snippet yourself
 ```
+
+`motte install` merges into existing config rather than replacing it, and records what it wrote — so
+`motte uninstall --keep-cli` removes exactly that. A file motte created is deleted; a file motte merged
+into keeps everything except motte's own entry. It refuses to touch a config file it cannot parse.
+
+Claude Code's user-scope config lives in `~/.claude.json` alongside a lot of other state, so
+`--scope user` delegates to `claude mcp add` rather than motte guessing at that file's shape.
 
 Commit `.mcp.json` and every agent working in the repo picks it up.
 
