@@ -1,10 +1,10 @@
 ---
 id: 5
 title: MCP server
-state: Todo
+state: In Progress
 labels: [mcp, agents]
 created: 2026-07-29T11:24:00Z
-updated: 2026-07-29T11:24:00Z
+updated: 2026-07-30T01:38:14Z
 ---
 
 ## Description
@@ -28,3 +28,7 @@ the git user. Both land in the same file, which is what makes the record shared.
 
 `breakdown` is the tool that directly serves the stated goal: take a larger story or epic and
 break it into smaller trackable components.
+
+### 2026-07-30T01:38:14Z — claude (agent)
+
+Scaffold (#0029) and breakdown (#0030) are done and verified against motte's own backlog over a real MCP session. Remaining: #0031, motte install, which writes the config into agents rather than making you paste it. .mcp.json is committed in this repo now, so agents working here pick the server up automatically.

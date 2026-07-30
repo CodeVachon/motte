@@ -13,6 +13,7 @@ import { doctorCommand } from "./commands/doctor.js";
 import { completionCandidates, formatCandidates, isZshShell, wordsFromArgv } from "./completion.js";
 import { context } from "./context.js";
 import { initCommand } from "./commands/init.js";
+import { mcpCommand } from "./commands/mcp.js";
 import { listCommand } from "./commands/list.js";
 import {
     addCommand,
@@ -104,6 +105,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         .command(statusCommand)
         .command(treeCommand)
         .command(doctorCommand)
+        .command(mcpCommand)
         .command(upgradeCommand)
         .command(uninstallCommand)
         // Four parameters selects yargs' "fallback" completion form: ours runs first, and calling

@@ -205,9 +205,16 @@ leaves the denominator entirely, so abandoning an issue does not permanently cap
 ## Agents
 
 ```bash
-motte install                    # wires `motte mcp` into the agents on your machine
-motte mcp --print-config         # or print the snippet and paste it yourself
+motte mcp --print-config    # snippet for Claude Code or Codex CLI
+motte mcp                   # run the server (agents launch this for you)
 ```
+
+Commit `.mcp.json` and every agent working in the repo picks it up.
+
+The server tells agents to start with **`ready_issues`** rather than listing everything — unsettled work
+with every blocker settled, which is the question an agent actually has at the start of a session. And
+**`breakdown`** splits an issue into children in one call, expressing the ordering between them at the
+same time, so decomposing an epic is one round trip rather than a dozen.
 
 Notes written through MCP are recorded as authored by the agent; notes written through the CLI are
 recorded as authored by the git user. Both land in the same file — that is what makes the record
