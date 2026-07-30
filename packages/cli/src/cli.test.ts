@@ -81,6 +81,15 @@ async function motte(cwd: string, args: string[], env: Record<string, string> = 
     const previousLog = console.log;
     const previousExitCode = process.exitCode;
     const previousEnv = new Map<string, string | undefined>();
+    /**
+     * `run` attaches an EPIPE listener to each stream every call. Harmless in the binary, which calls it
+     * once, but in-process they accumulate — 60 calls tripped Node's MaxListenersExceededWarning. Snapshot
+     * what was there so only the listeners this call added get removed, leaving vitest's own alone.
+     */
+    const previousListeners = new Map<NodeJS.WriteStream, Function[]>([
+        [process.stdout, process.stdout.listeners("error")],
+        [process.stderr, process.stderr.listeners("error")]
+    ]);
 
     let stdout = "";
     let stderr = "";
@@ -134,6 +143,14 @@ async function motte(cwd: string, args: string[], env: Record<string, string> = 
         for (const [key, value] of previousEnv) {
             if (value === undefined) delete process.env[key];
             else process.env[key] = value;
+        }
+
+        for (const [stream, kept] of previousListeners) {
+            for (const listener of stream.listeners("error")) {
+                if (!kept.includes(listener)) {
+                    stream.removeListener("error", listener as (...args: unknown[]) => void);
+                }
+            }
         }
     }
 

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { FrontmatterSchema } from "@motte/core";
 import { createMotteServer } from "./server.js";
+import { issueJson } from "../context.js";
 
 /**
  * Drives the server over an in-memory transport — the same code path a real client takes, without
@@ -380,5 +382,114 @@ describe("breakdown", () => {
             expect(result.text).toContain("only 2 children");
             expect(await countIssues()).toBe(1);
         });
+    });
+});
+
+/**
+ * The MCP surface is a hand-maintained duplicate of the CLI's `--json` shape, and that duplication is
+ * what let `blockedBy` go missing from the CLI for several commits while this side had it. Both sides now
+ * carry the same guard.
+ *
+ * Asserted through real tool calls rather than by exporting `issueJson`, so what is pinned is the response
+ * an agent actually receives.
+ */
+describe("the issue shape agents receive", () => {
+    let client: Client;
+
+    beforeEach(async () => {
+        const root = project();
+        client = await connect(root);
+        await call(client, "create_issue", { title: "Parent" });
+        await call(client, "create_issue", { title: "Child", parent: 1, labels: ["core"] });
+        await call(client, "set_blockers", { ref: 2, blockedBy: [1] });
+    });
+
+    /**
+     * Every field of the issue model must reach the agent. Adding one to `FrontmatterSchema` and
+     * forgetting this surface fails here rather than shipping a tool that silently lacks it.
+     */
+    it("represents every field of the issue model", async () => {
+        const full = await call(client, "get_issue", { ref: 2 });
+        const listed = await call(client, "list_issues");
+
+        const emitted = Object.keys(full.json());
+        const first = (listed.json<{ issues: Record<string, unknown>[] }>().issues ?? [])[0] ?? {};
+        const listedKeys = Object.keys(first);
+
+        for (const field of Object.keys(FrontmatterSchema.shape)) {
+            expect(emitted, `\`${field}\` is missing from get_issue`).toContain(field);
+            expect(listedKeys, `\`${field}\` is missing from list_issues`).toContain(field);
+        }
+    });
+
+    it("pins the trimmed shape used by list_issues", async () => {
+        const listed = await call(client, "list_issues");
+        const first = listed.json<{ issues: Record<string, unknown>[] }>().issues[0]!;
+
+        // `openBlockers` is derived and deliberately MCP-only: an agent choosing what to pick up needs to
+        // know whether a blocker is still open, which `blockedBy` alone does not say. `unknownSections`
+        // and the file path are deliberately absent — noise for an agent.
+        expect(Object.keys(first).sort()).toEqual([
+            "assignee",
+            "blockedBy",
+            "created",
+            "id",
+            "labels",
+            "openBlockers",
+            "parent",
+            "state",
+            "title",
+            "updated"
+        ]);
+    });
+
+    it("pins the full shape used by get_issue", async () => {
+        const full = await call(client, "get_issue", { ref: 2 });
+
+        expect(Object.keys(full.json()).sort()).toEqual([
+            "assignee",
+            "blockedBy",
+            "children",
+            "created",
+            "description",
+            "id",
+            "labels",
+            "notes",
+            "openBlockers",
+            "parent",
+            "plan",
+            "progress",
+            "state",
+            "title",
+            "updated"
+        ]);
+    });
+
+    /**
+     * The two surfaces diverge on purpose, so the divergence is written down. If this list changes, it
+     * should be because someone decided to change it.
+     */
+    it("differs from the CLI contract only in the documented ways", async () => {
+        const full = Object.keys(await call(client, "get_issue", { ref: 2 }).then((r) => r.json()));
+        const cli = Object.keys(
+            issueJson({
+                id: 1,
+                title: "T",
+                state: "Todo",
+                created: "2026-07-30T00:00:00Z",
+                updated: "2026-07-30T00:00:00Z",
+                description: "",
+                plan: "",
+                notes: []
+            })
+        );
+
+        // MCP adds derived context an agent needs; the CLI adds the file path a human might open.
+        expect(full.filter((key) => !cli.includes(key)).sort()).toEqual([
+            "children",
+            "openBlockers",
+            "progress"
+        ]);
+        expect(cli.filter((key) => !full.includes(key))).toEqual(["file"]);
     });
 });
