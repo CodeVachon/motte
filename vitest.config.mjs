@@ -25,7 +25,7 @@ export default defineConfig({
              * reasons that have nothing to do with test quality.
              */
             include: ["packages/*/src/**/*.ts"],
-            exclude: ["**/*.test.ts", "**/generated/**"]
+            exclude: ["**/*.test.ts", "**/generated/**", "**/testing/**"]
         }
     }
 });

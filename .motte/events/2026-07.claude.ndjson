@@ -35,3 +35,7 @@
 {"at":"2026-07-30T18:04:25Z","id":74,"by":"claude","as":"agent","type":"created","title":"Share the issue-filtering logic between deps and the MCP reads","state":"Todo"}
 {"at":"2026-07-30T18:04:26Z","id":66,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-07-30T18:04:48Z","id":67,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-07-30T18:13:08Z","id":75,"by":"claude","as":"agent","type":"created","title":"Test prune and restore","state":"Todo"}
+{"at":"2026-07-30T18:13:08Z","id":76,"by":"claude","as":"agent","type":"created","title":"Test upgrade and the release lookup","state":"Todo"}
+{"at":"2026-07-30T18:13:08Z","id":75,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-07-30T18:19:30Z","id":75,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
