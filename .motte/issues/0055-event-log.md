@@ -1,10 +1,10 @@
 ---
 id: 55
 title: Event log
-state: Todo
+state: In Progress
 labels: [core, reports]
 created: 2026-07-29T20:15:00Z
-updated: 2026-07-29T20:15:00Z
+updated: 2026-07-30T12:34:20Z
 ---
 
 ## Description

@@ -71,7 +71,8 @@ export function loadConfigFrom(configPath: string): Config {
         configPath,
         issuesPath: isAbsolute(parsed.data.issuesDir)
             ? parsed.data.issuesDir
-            : join(root, parsed.data.issuesDir)
+            : join(root, parsed.data.issuesDir),
+        events: parsed.data.events
     };
 }
 

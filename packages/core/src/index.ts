@@ -47,6 +47,20 @@ export {
     type IssueRef
 } from "./frontmatter.js";
 
+export {
+    appendEvents,
+    eventsDir,
+    eventsFor,
+    readEvents,
+    shardName,
+    timeInState,
+    transitionsBetween,
+    type BrokenEventLine,
+    type ReadResult
+} from "./events.js";
+
+export { EventSchema, TRANSITION_TYPES, type Event, type EventType } from "./schema/event.js";
+
 export { idFromFilename, ID_PAD, issueFilename, padId, slugify } from "./slug.js";
 
 export { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
@@ -74,9 +88,11 @@ export {
 export {
     ConfigSchema,
     DEFAULT_STATES,
+    EventsSchema,
     StateCategorySchema,
     StateSchema,
     type Config,
+    type EventsConfig,
     type RawConfig,
     type State,
     type StateCategory

@@ -29,7 +29,8 @@ const config: Config = {
     defaultState: "Todo",
     root: "/tmp/test",
     configPath: "/tmp/test/.motte.config.json",
-    issuesPath: "/tmp/test/.motte/issues"
+    issuesPath: "/tmp/test/.motte/issues",
+    events: { enabled: false }
 };
 
 function issue(id: number, state: string, blockedBy?: number[]): Issue {

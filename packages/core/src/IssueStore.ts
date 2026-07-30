@@ -12,6 +12,13 @@ import { join } from "node:path";
 import { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
 import { resolveState, type Config } from "./config.js";
 import { blocked, blocks, findDependencyCycle, openBlockers, ready } from "./deps.js";
+import {
+    appendEvents,
+    eventsDir,
+    readEvents,
+    transitionsBetween,
+    type ReadResult
+} from "./events.js";
 import { readIssueRef, type IssueRef } from "./frontmatter.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
 import { issueFilename, slugify } from "./slug.js";
@@ -64,7 +71,14 @@ export class IssueStore {
     private cache = new Map<string, { mtimeMs: number; issue: Issue }>();
     private broken: BrokenFile[] = [];
 
-    constructor(readonly config: Config) {}
+    /**
+     * @param author Who to attribute recorded transitions to. The CLI leaves this unset and gets the
+     * git user; the MCP server passes the connecting agent, so the log distinguishes the two.
+     */
+    constructor(
+        readonly config: Config,
+        private readonly author?: Author
+    ) {}
 
     // ---------------------------------------------------------------- reading
 
@@ -488,8 +502,18 @@ export class IssueStore {
         }
     }
 
-    /** Write atomically: full content to a temp file in the same directory, then rename over. */
+    /**
+     * Write atomically: full content to a temp file in the same directory, then rename over.
+     *
+     * Every mutation funnels through here, which is why the event log is appended here rather than
+     * from each public method. A new mutator added later records its transitions without anyone having
+     * to remember to wire it up.
+     */
     private write(issue: Issue, filename: string): Issue {
+        // Captured before the write, and looked up by id rather than by path so a rename does not
+        // make the previous version invisible.
+        const before = this.all().find((candidate) => candidate.id === issue.id);
+
         mkdirSync(this.config.issuesPath, { recursive: true });
 
         const filePath = join(this.config.issuesPath, filename);
@@ -500,6 +524,35 @@ export class IssueStore {
 
         const written: Issue = { ...issue, filePath };
         this.cache.set(filePath, { mtimeMs: statSync(filePath).mtimeMs, issue: written });
+
+        this.record(before, written);
+
         return written;
+    }
+
+    /**
+     * Append the transitions this write represents.
+     *
+     * Best effort by design: an unwritable events directory must not fail the write that already
+     * succeeded. The issue files are the source of truth, and a missing event is a gap in reporting
+     * rather than lost work.
+     */
+    private record(before: Issue | undefined, after: Issue): void {
+        if (!this.config.events.enabled) return;
+
+        const author = this.author ?? resolveAuthor({ cwd: this.config.root });
+        const events = transitionsBetween(before, after, author, timestamp());
+        if (events.length === 0) return;
+
+        try {
+            appendEvents(eventsDir(this.config.root), events, author);
+        } catch {
+            // Deliberately silent — see above. `motte doctor` reports an unreadable log separately.
+        }
+    }
+
+    /** Every recorded event, merged across shards and sorted by time. */
+    events(options: { since?: string } = {}): ReadResult {
+        return readEvents(eventsDir(this.config.root), options);
     }
 }

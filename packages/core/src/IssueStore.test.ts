@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    readdirSync,
+    rmSync,
+    statSync,
+    utimesSync,
+    writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -208,6 +218,122 @@ describe("IssueStore", () => {
 
             expect(cleared.labels).toBeUndefined();
             expect(readFileSync(cleared.filePath!, "utf8")).not.toContain("labels");
+        });
+    });
+
+    describe("event recording", () => {
+        /** A project with the log switched on, since the shared fixture disables it. */
+        function logged(author?: { name: string; type: "user" | "agent" }) {
+            const root = mkdtempSync(join(tmpdir(), "motte-evt-"));
+            const configPath = join(root, ".motte.config.json");
+            writeFileSync(
+                configPath,
+                JSON.stringify({ name: "t", states: DEFAULT_STATES, events: { enabled: true } }),
+                "utf8"
+            );
+            const cfg = loadConfigFrom(configPath);
+            return { config: cfg, store: new IssueStore(cfg, author) };
+        }
+
+        it("records a creation", () => {
+            const { store } = logged();
+            store.create({ title: "First" });
+
+            const { events } = store.events();
+            expect(events).toHaveLength(1);
+            expect(events[0]).toMatchObject({ type: "created", id: 1, title: "First" });
+        });
+
+        /**
+         * The reason recording lives in the private write path rather than in each public method: a
+         * mutator added later cannot forget to record.
+         */
+        it("records from every mutation path", () => {
+            const { store } = logged();
+            const first = store.create({ title: "First" });
+            const second = store.create({ title: "Second" });
+
+            store.setState(first.id, "in progress");
+            store.assign(first.id, "atlas");
+            store.setParent(second.id, first.id);
+            store.block(second.id, first.id);
+            store.unblock(second.id, first.id);
+            store.update(first.id, { title: "Renamed" });
+            // A note changes the file but is not a transition — its own record is in the issue.
+            store.addNote(first.id, "A note", { name: "chris", type: "user" });
+            store.replace(first.id, { ...store.require(first.id), state: "Done" });
+
+            // Write order, not id order — see the sort comment in events.ts.
+            const types = store.events().events.map((event) => event.type);
+
+            expect(types).toEqual([
+                "created",
+                "created",
+                "state",
+                "assigned",
+                "parent",
+                "blocked",
+                "unblocked",
+                "title",
+                "state"
+            ]);
+        });
+
+        it("records nothing for a no-op write", () => {
+            const { store } = logged();
+            const created = store.create({ title: "Same" });
+            store.setState(created.id, "Todo");
+
+            expect(store.events().events).toHaveLength(1);
+        });
+
+        it("attributes to the author the store was given", () => {
+            const { store } = logged({ name: "claude-code", type: "agent" });
+            store.create({ title: "By an agent" });
+
+            const [event] = store.events().events;
+            expect(event).toMatchObject({ by: "claude-code", as: "agent" });
+        });
+
+        it("shards by the acting author, so two actors never share a file", () => {
+            const project = logged({ name: "claude-code", type: "agent" });
+            project.store.create({ title: "By the agent" });
+
+            const asUser = new IssueStore(project.config, { name: "Chris", type: "user" });
+            asUser.create({ title: "By a person" });
+
+            const shards = readdirSync(join(project.config.root, ".motte", "events")).sort();
+
+            expect(shards).toHaveLength(2);
+            expect(shards.some((name) => name.includes("claude-code"))).toBe(true);
+            expect(shards.some((name) => name.includes("chris"))).toBe(true);
+        });
+
+        it("records nothing when the log is disabled", () => {
+            const root = mkdtempSync(join(tmpdir(), "motte-off-"));
+            const configPath = join(root, ".motte.config.json");
+            writeFileSync(
+                configPath,
+                JSON.stringify({ name: "t", states: DEFAULT_STATES, events: { enabled: false } }),
+                "utf8"
+            );
+            const off = new IssueStore(loadConfigFrom(configPath));
+
+            off.create({ title: "Unlogged" });
+
+            expect(off.events().events).toEqual([]);
+            expect(existsSync(join(root, ".motte", "events"))).toBe(false);
+        });
+
+        it("keeps working when the events directory cannot be written", () => {
+            const { config: cfg, store: logging } = logged();
+            // A file where the events directory should be, so mkdir and append both fail.
+            mkdirSync(join(cfg.root, ".motte"), { recursive: true });
+            writeFileSync(join(cfg.root, ".motte", "events"), "not a directory", "utf8");
+
+            // The issue write already succeeded; a missing event is a reporting gap, not lost work.
+            expect(() => logging.create({ title: "Still works" })).not.toThrow();
+            expect(logging.all()).toHaveLength(1);
         });
     });
 

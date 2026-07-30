@@ -120,6 +120,20 @@ export function createMotteServer(options: ServerOptions = {}): McpServer {
     const cwd = options.cwd ?? process.cwd();
 
     /**
+     * The agent's identity, used both for authored notes and for recorded transitions.
+     *
+     * Prefers the client's own name from the MCP handshake, so notes say "claude-code" rather than a
+     * generic label, and falls back to MOTTE_AGENT or an explicit override.
+     */
+    const agentName = (): string =>
+        options.agent ??
+        process.env.MOTTE_AGENT ??
+        server.server.getClientVersion()?.name ??
+        "agent";
+
+    const author = () => ({ name: agentName(), type: "agent" as const });
+
+    /**
      * Resolve the project per call rather than at startup.
      *
      * A server that fails to start shows up in the client as broken with no explanation. One that
@@ -127,7 +141,10 @@ export function createMotteServer(options: ServerOptions = {}): McpServer {
      */
     const open = (): { config: Config; store: IssueStore } => {
         const config = loadConfig(cwd);
-        return { config, store: new IssueStore(config) };
+        // The author is handed to the store, not just used for notes, so recorded transitions are
+        // attributed to the agent too — otherwise the log would credit every agent action to the
+        // git user and the whole point of distinguishing them would be lost.
+        return { config, store: new IssueStore(config, author()) };
     };
 
     /** Every tool body runs through here, so a missing project or a bad ref never crashes the server. */
@@ -141,20 +158,6 @@ export function createMotteServer(options: ServerOptions = {}): McpServer {
                 return failure(thrown instanceof Error ? thrown.message : String(thrown));
             }
         };
-
-    /**
-     * The agent's identity for authored notes.
-     *
-     * Prefers the client's own name from the MCP handshake, so notes say "claude-code" rather than a
-     * generic label, and falls back to MOTTE_AGENT or an explicit override.
-     */
-    const agentName = (): string =>
-        options.agent ??
-        process.env.MOTTE_AGENT ??
-        server.server.getClientVersion()?.name ??
-        "agent";
-
-    const author = () => ({ name: agentName(), type: "agent" as const });
 
     // ------------------------------------------------------------------ reading
 

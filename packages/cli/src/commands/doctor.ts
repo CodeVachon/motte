@@ -45,6 +45,17 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
             });
         }
 
+        // A corrupt event log degrades reporting but does not invalidate any work, so it is a warning.
+        // The issue files remain the source of truth.
+        for (const line of store.events().broken) {
+            problems.push({
+                severity: "warning",
+                kind: "event-log",
+                message: `${line.file}${line.line > 0 ? ` line ${line.line}` : ""}: ${line.message}`,
+                file: undefined
+            });
+        }
+
         for (const problem of dependencyProblems(config, issues)) {
             problems.push({
                 // Working on something still blocked is the author's call, not a broken file.

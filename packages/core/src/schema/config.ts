@@ -26,6 +26,18 @@ export const DEFAULT_STATES: State[] = [
     { name: "Done", category: "completed" }
 ];
 
+export const EventsSchema = z.object({
+    /**
+     * Whether transitions are recorded to `.motte/events/`.
+     *
+     * No retention settings live here on purpose: pruning is a deliberate, manually triggered
+     * operation (see `motte prune`), never something that happens on a schedule.
+     */
+    enabled: z.boolean().default(true)
+});
+
+export type EventsConfig = z.infer<typeof EventsSchema>;
+
 export const ConfigSchema = z
     .object({
         $schema: z.string().optional(),
@@ -33,7 +45,8 @@ export const ConfigSchema = z
         name: z.string().min(1).optional(),
         issuesDir: z.string().min(1).default(".motte/issues"),
         states: z.array(StateSchema).min(1).default(DEFAULT_STATES),
-        defaultState: z.string().min(1).optional()
+        defaultState: z.string().min(1).optional(),
+        events: EventsSchema.default({ enabled: true })
     })
     .superRefine((config, ctx) => {
         const names = config.states.map((state) => state.name);
@@ -70,4 +83,5 @@ export interface Config {
     configPath: string;
     /** Absolute path to the issues directory. */
     issuesPath: string;
+    events: EventsConfig;
 }

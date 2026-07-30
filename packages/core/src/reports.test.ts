@@ -19,7 +19,8 @@ function config(states: State[] = STATES): Config {
         defaultState: states[0]!.name,
         root: "/tmp/test",
         configPath: "/tmp/test/.motte.config.json",
-        issuesPath: "/tmp/test/.motte/issues"
+        issuesPath: "/tmp/test/.motte/issues",
+        events: { enabled: false }
     };
 }
 
