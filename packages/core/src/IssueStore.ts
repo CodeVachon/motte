@@ -334,21 +334,8 @@ export class IssueStore {
         next.updated = timestamp();
 
         // Rename when the title changed so the filename keeps matching, but keep the id prefix.
-        const filename = issueFilename(next.id, next.title);
-        const previousPath = existing.filePath;
-        const written = this.write(next, filename);
-
-        if (previousPath !== undefined && previousPath !== written.filePath) {
-            try {
-                unlinkSync(previousPath);
-            } catch {
-                // The rename target was written; a stale source is reported by `motte doctor`
-                // rather than failing the update.
-            }
-            this.cache.delete(previousPath);
-        }
-
-        return written;
+        // Removing the old file is `write`'s job, so every mutator gets it.
+        return this.write(next, issueFilename(next.id, next.title));
     }
 
     /**
@@ -385,18 +372,8 @@ export class IssueStore {
         if (next.blockedBy !== undefined && next.blockedBy.length === 0) delete next.blockedBy;
         if (next.labels !== undefined && next.labels.length === 0) delete next.labels;
 
-        const written = this.write(next, issueFilename(next.id, next.title));
-
-        if (existing.filePath !== undefined && existing.filePath !== written.filePath) {
-            try {
-                unlinkSync(existing.filePath);
-            } catch {
-                // The new file is written; a stale source is reported by `motte doctor`.
-            }
-            this.cache.delete(existing.filePath);
-        }
-
-        return written;
+        // As with `update`, removing the file this issue used to live in is `write`'s job.
+        return this.write(next, issueFilename(next.id, next.title));
     }
 
     setState(id: number, state: string): Issue {
@@ -524,6 +501,25 @@ export class IssueStore {
 
         const written: Issue = { ...issue, filePath };
         this.cache.set(filePath, { mtimeMs: statSync(filePath).mtimeMs, issue: written });
+
+        /**
+         * Remove the file this issue used to live in.
+         *
+         * Centralised here rather than in each mutator, because it was not: `addNote` wrote to the
+         * title-derived filename without unlinking the old path, so adding a note to an issue whose
+         * filename did not already match its title left two files with the same id. `motte doctor`
+         * caught it in CI as a duplicate-id error. Doing it in the one place every write passes through
+         * means a mutator added later cannot reintroduce it.
+         */
+        if (before?.filePath !== undefined && before.filePath !== filePath) {
+            try {
+                unlinkSync(before.filePath);
+            } catch {
+                // The new file is written; a stale one is reported by `motte doctor` rather than
+                // failing a write that has already succeeded.
+            }
+            this.cache.delete(before.filePath);
+        }
 
         this.record(before, written);
 

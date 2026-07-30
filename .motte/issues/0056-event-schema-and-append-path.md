@@ -5,7 +5,7 @@ state: Done
 parent: 55
 labels: [core]
 created: 2026-07-29T20:16:00Z
-updated: 2026-07-30T12:43:10Z
+updated: 2026-07-30T12:53:25Z
 ---
 
 ## Description
@@ -74,3 +74,22 @@ is write order. Found by a test expectation failing, not by reading.
 Recording is best effort: an unwritable events directory does not fail the issue write that already
 succeeded. The issue files are the source of truth and a missing event is a reporting gap, not lost
 work. A malformed line is collected rather than thrown, and doctor reports it as a warning.
+
+### 2026-07-30T12:53:25Z — claude (agent)
+
+Follow-up: CI caught a real bug that the event-log work exposed rather than caused.
+
+addNote wrote to the title-derived filename without removing the file the issue previously lived in.
+update and replace each handled that themselves, so the gap only showed on an issue whose filename did
+not already match its title — which is exactly what several hand-authored files were. Adding a note to
+#0057 produced two files with the same id, and motte doctor failed in CI with a duplicate-id error.
+
+Fixed by moving the unlink into the single private write path, the same place event recording lives, so a
+mutator added later cannot reintroduce it. update and replace lost their own copies of the logic.
+
+The regression test was checked against the un-fixed code first: it fails without the fix, along with two
+existing rename tests. A regression test that passes either way proves nothing.
+
+Also a process failure worth recording. I ran doctor, then mutated the backlog with motte note, then
+committed without re-running it. The check that would have caught this locally had already been run
+before the change that broke it. Verify after the last mutation, not before.

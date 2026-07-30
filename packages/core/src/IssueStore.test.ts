@@ -194,6 +194,28 @@ describe("IssueStore", () => {
             expect(after.notes[0]!.body).toBe("From a person");
         });
 
+        /**
+         * Regression: `addNote` wrote to the title-derived filename without removing the old file, so
+         * adding a note to an issue whose filename did not already match its title produced two files
+         * with the same id. It escaped local checks and was caught by `motte doctor` in CI.
+         */
+        it("does not leave a second file behind when the filename does not match the title", () => {
+            const created = store.create({ title: "Correct title" });
+
+            // A hand-authored file whose name does not match its title — exactly how the real one
+            // came about.
+            const stale = join(config.issuesPath, "0001-some-other-name.md");
+            writeFileSync(stale, readFileSync(created.filePath!, "utf8"), "utf8");
+            rmSync(created.filePath!);
+
+            const reopened = new IssueStore(config);
+            reopened.addNote(1, "A note", { name: "chris", type: "user" });
+
+            const files = readdirSync(config.issuesPath).filter((name) => name.endsWith(".md"));
+            expect(files).toEqual(["0001-correct-title.md"]);
+            expect(reopened.all()).toHaveLength(1);
+        });
+
         it("survives a round-trip through disk", () => {
             const issue = store.create({ title: "Persisted" });
             store.addNote(issue.id, "Line one\n\nLine two", { name: "atlas", type: "agent" });
