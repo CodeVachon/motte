@@ -83,17 +83,49 @@ detect_target() {
 
 # --- version resolution ------------------------------------------------------
 
-latest_version() {
-    # Parse the tag out of the releases API rather than following /latest, so this works the same
-    # whether or not the newest release is marked latest.
-    api="https://api.github.com/repos/$REPO/releases/latest"
+github_api() {
+    # No -f: the response body is wanted even on an error status, so rate limiting can be reported
+    # as rate limiting rather than as a generic network failure.
     if command -v curl >/dev/null 2>&1; then
-        body="$(curl -fsSL "$api" 2>/dev/null)" || die "could not reach the GitHub API to find the latest release"
+        curl -sSL -H "Accept: application/vnd.github+json" "$1" 2>/dev/null
     else
-        body="$(wget -qO- "$api" 2>/dev/null)" || die "could not reach the GitHub API to find the latest release"
+        wget -qO- --header="Accept: application/vnd.github+json" "$1" 2>/dev/null
+    fi
+}
+
+first_tag() {
+    # Splitting on commas puts each JSON field on its own line, which is enough to pick the first
+    # tag_name without requiring jq. GitHub returns releases newest first.
+    printf '%s' "$1" | tr ',' '\n' | grep '"tag_name"' | head -1 |
+        sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+}
+
+latest_version() {
+    # Prefer a stable release. GitHub's /releases/latest deliberately excludes prereleases, so while
+    # motte is pre-1.0 and every release is a prerelease, this returns 404 and the fallback below is
+    # the only path that finds anything. After 1.0 this becomes the normal path again.
+    tag="$(first_tag "$(github_api "https://api.github.com/repos/$REPO/releases/latest")")"
+    if [ -n "$tag" ]; then
+        printf '%s' "$tag"
+        return
     fi
 
-    echo "$body" | tr ',' '\n' | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+    body="$(github_api "https://api.github.com/repos/$REPO/releases")"
+
+    case "$body" in
+        *"rate limit"*)
+            die "GitHub API rate limit reached. Retry later, or set MOTTE_VERSION to skip the lookup:\n  MOTTE_VERSION=v0.1.0 sh install.sh"
+            ;;
+    esac
+
+    # Newest release of any kind, prereleases included. A draft would also appear here, but drafts
+    # have no downloadable assets, so the download below fails with a clear message rather than
+    # installing something wrong.
+    tag="$(first_tag "$body")"
+    [ -n "$tag" ] ||
+        die "could not find a release for $REPO. Set MOTTE_VERSION to install a specific version."
+
+    printf '%s' "$tag"
 }
 
 fetch() {

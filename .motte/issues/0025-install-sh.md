@@ -5,7 +5,7 @@ state: Done
 parent: 4
 labels: [dist]
 created: 2026-07-29T11:47:00Z
-updated: 2026-07-30T00:58:48Z
+updated: 2026-07-30T01:03:00Z
 ---
 
 ## Description
@@ -47,3 +47,20 @@ makes the CI verification step possible.
 
 Not yet exercised: the latest-release lookup against the GitHub API, since no release exists yet. Every
 test so far passed MOTTE_VERSION explicitly, which skips that path.
+
+### 2026-07-30T01:03:00Z — claude (agent)
+
+Bug found by cutting the real release, which is the only way it could have surfaced.
+
+The latest-version lookup used GitHub's /releases/latest, which deliberately excludes prereleases. Every
+pre-1.0 release is marked prerelease, so that endpoint returned 404 and `curl | sh` could not find
+anything to install. Every earlier test had passed MOTTE_VERSION explicitly and skipped the path.
+
+Worth recording that the comment above the broken code described the correct approach — "parse the tag
+out of the releases API rather than following /latest" — while the implementation did the opposite. The
+comment was right and the code contradicted it.
+
+Now tries /releases/latest first and falls back to the newest release of any kind from /releases. That is
+correct in both eras: prereleases today when there is no stable release, stable releases after 1.0
+without picking up prereleases. Rate limiting is reported as rate limiting rather than as a generic
+network failure, since 60 requests per hour per IP is easy to hit and the message should say so.
