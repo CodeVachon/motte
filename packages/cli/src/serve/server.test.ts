@@ -290,17 +290,21 @@ describe("static assets", () => {
     it("serves files from a directory when given one", async () => {
         const dir = mkdtempSync(join(tmpdir(), "motte-assets-"));
         writeFileSync(join(dir, "index.html"), "<h1>real</h1>", "utf8");
-        writeFileSync(join(dir, "app.a1b2c3d4.js"), "console.log(1)", "utf8");
+        // A real Vite filename: `name-HASH.ext`, with a base64url hash rather than hex.
+        writeFileSync(join(dir, "index-BMkVQf6L.js"), "console.log(1)", "utf8");
 
         await running.close();
         running = await startMotteServer(config, { assets: directoryAssets(dir) });
 
         expect(await (await get("/")).text()).toBe("<h1>real</h1>");
 
-        const script = await get("/app.a1b2c3d4.js");
+        const script = await get("/index-BMkVQf6L.js");
         expect(script.headers.get("content-type")).toMatch(/javascript/);
         // A hashed filename can never change under a given name, so it is safe to cache hard.
         expect(script.headers.get("cache-control")).toMatch(/immutable/);
+
+        // The entry document must never be cached, or a rebuild is invisible until a hard reload.
+        expect((await get("/")).headers.get("cache-control")).toBe("no-store");
     });
 
     it("falls back to the entry document for a client-side route", async () => {

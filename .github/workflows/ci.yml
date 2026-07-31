@@ -21,6 +21,10 @@ jobs:
       # Verbose so a hang names the last test that completed. Vitest reports per file by default,
       # which told us nothing when cli.test.ts hung: the file never reported at all.
       - run: bun run test --reporter=verbose
+      # The SPA is a deliverable, so a build that stopped compiling should fail here rather than at
+      # release time. typecheck and test already cover apps/web; this covers the bundle.
+      - run: bun run build:web
+
       - name: Validate this repo's own backlog
         run: bun run doctor
 

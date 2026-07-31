@@ -59,8 +59,10 @@ export function directoryAssets(root: string): AssetLookup {
         return {
             body: readFileSync(candidate),
             type: contentType(candidate),
-            // Vite's build puts a hash in the filename of everything but the entry document.
-            immutable: /\.[0-9a-f]{8,}\./i.test(candidate)
+            // Vite's build puts a hash in the filename of everything but the entry document, as
+            // `name-HASH.ext`. The hash is base64url, not hex — an earlier hex-only pattern here never
+            // matched a real build, so every asset was served no-store.
+            immutable: /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(candidate)
         };
     };
 }

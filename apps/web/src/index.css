@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/**
+ * Design tokens as CSS variables, in the shape shadcn components are written against, so a component
+ * copied in from that registry works without rewriting its class names.
+ *
+ * Both themes are defined and the choice follows the operating system. There is no theme toggle: this is a
+ * local tool run from a terminal, and matching the terminal's own appearance is the least surprising thing
+ * it can do.
+ */
+@layer base {
+    :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.15 0.005 285);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.15 0.005 285);
+        --muted: oklch(0.96 0.003 285);
+        --muted-foreground: oklch(0.5 0.01 285);
+        --border: oklch(0.9 0.004 285);
+        --primary: oklch(0.45 0.16 264);
+        --primary-foreground: oklch(0.99 0 0);
+        --ring: oklch(0.45 0.16 264);
+
+        /* State categories, so a board colours a column by what the state means rather than its name. */
+        --unstarted: oklch(0.6 0.01 285);
+        --started: oklch(0.65 0.15 55);
+        --completed: oklch(0.6 0.14 150);
+        --cancelled: oklch(0.55 0.02 285);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --background: oklch(0.16 0.005 285);
+            --foreground: oklch(0.95 0.003 285);
+            --card: oklch(0.2 0.006 285);
+            --card-foreground: oklch(0.95 0.003 285);
+            --muted: oklch(0.25 0.006 285);
+            --muted-foreground: oklch(0.68 0.01 285);
+            --border: oklch(0.3 0.008 285);
+            --primary: oklch(0.7 0.15 264);
+            --primary-foreground: oklch(0.16 0.005 285);
+            --ring: oklch(0.7 0.15 264);
+
+            --unstarted: oklch(0.6 0.01 285);
+            --started: oklch(0.75 0.15 60);
+            --completed: oklch(0.7 0.15 150);
+            --cancelled: oklch(0.5 0.02 285);
+        }
+    }
+}
+
+/* Tailwind 4 is configured in CSS rather than a config file, so the tokens above become utilities here. */
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-border: var(--border);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-ring: var(--ring);
+    --color-unstarted: var(--unstarted);
+    --color-started: var(--started);
+    --color-completed: var(--completed);
+    --color-cancelled: var(--cancelled);
+
+    --font-sans:
+        ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+    body {
+        background-color: var(--color-background);
+        color: var(--color-foreground);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+    }
+}

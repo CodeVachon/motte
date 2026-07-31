@@ -80,6 +80,49 @@ const NoteBody = z
     })
     .strict();
 
+/**
+ * One issue, as the API returns it.
+ *
+ * Derived from the function that builds it rather than declared separately, so it cannot describe something
+ * the server does not send. `apps/web` imports this as a type-only import, which the bundler erases.
+ */
+export type IssueResponse = ReturnType<typeof issueWithContext>;
+
+/** The list endpoint's envelope. */
+export interface IssueListResponse {
+    count: number;
+    issues: IssueResponse[];
+}
+
+/** What `GET /api/config` returns: enough for the UI to render states it has never seen before. */
+export type ConfigResponse = ReturnType<typeof configBody>;
+
+/** What `GET /api/status` returns: the progress report, plus what can be picked up and what cannot. */
+export type StatusResponse = ReturnType<typeof statusBody>;
+
+/**
+ * A node of `GET /api/tree`.
+ *
+ * Declared rather than derived, because the shape is recursive and `ReturnType` cannot express that.
+ * `treeJson` returns this type, so the compiler still checks the two agree.
+ */
+export interface TreeNodeResponse {
+    id: number;
+    title: string;
+    state: string;
+    children: TreeNodeResponse[];
+}
+
+export interface TreeResponse {
+    roots: TreeNodeResponse[];
+    problems: string[];
+}
+
+/** Every failure answers with this, whatever the status. */
+export interface ErrorResponse {
+    error: string;
+}
+
 function issueWithContext(config: Config, issues: Issue[], issue: Issue) {
     return {
         ...issueJson(issue),
@@ -91,7 +134,31 @@ function issueWithContext(config: Config, issues: Issue[], issue: Issue) {
     };
 }
 
-function treeJson(node: TreeNode): unknown {
+function configBody(config: Config) {
+    return {
+        name: config.name,
+        states: config.states,
+        defaultState: config.defaultState,
+        root: config.root,
+        events: config.events
+    };
+}
+
+function statusBody(config: Config, issues: Issue[]) {
+    const report = projectReport(config, issues);
+
+    return {
+        ...report,
+        // Ids, not whole issues. `projectReport` hands back full `Issue` objects here, which would put
+        // `unknownSections` and absolute file paths into an API response — noise the client cannot use, and
+        // the same trimming the MCP shape does for the same reason.
+        inProgress: report.inProgress.map((issue) => issue.id),
+        ready: ready(config, issues).map((issue) => issue.id),
+        blocked: blocked(config, issues).map((issue) => issue.id)
+    };
+}
+
+function treeJson(node: TreeNode): TreeNodeResponse {
     return {
         id: node.issue.id,
         title: node.issue.title,
@@ -216,24 +283,9 @@ function readRoutes(context: ApiContext, request: ApiRequest): ApiResponse | und
 
     if (request.method !== "GET") return undefined;
 
-    if (request.path === "/config") {
-        return ok({
-            name: config.name,
-            states: config.states,
-            defaultState: config.defaultState,
-            root: config.root,
-            events: config.events
-        });
-    }
+    if (request.path === "/config") return ok(configBody(config));
 
-    if (request.path === "/status") {
-        const issues = store.all();
-        return ok({
-            ...projectReport(config, issues),
-            ready: ready(config, issues).map((issue) => issue.id),
-            blocked: blocked(config, issues).map((issue) => issue.id)
-        });
-    }
+    if (request.path === "/status") return ok(statusBody(config, store.all()));
 
     if (request.path === "/tree") {
         const issues = store.all();

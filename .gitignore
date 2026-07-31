@@ -19,3 +19,6 @@ apps/*/.vite
 
 # NOTE: `.motte/` is deliberately NOT ignored. The backlog is the product of this
 # tool and is meant to be committed and shared across workspaces.
+
+# Playwright MCP writes snapshots and screenshots here while verifying the web UI.
+.playwright-mcp/

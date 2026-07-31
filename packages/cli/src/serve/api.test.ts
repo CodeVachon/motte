@@ -353,3 +353,29 @@ describe("the shape of failure", () => {
         }
     });
 });
+
+describe("the status response", () => {
+    /**
+     * `projectReport` returns whole `Issue` objects for what is in progress. Passing those through would put
+     * `unknownSections` and absolute file paths into an API response — data a client cannot use and should
+     * not have to ignore.
+     */
+    it("reports in-progress work as ids, not whole issues", () => {
+        seed();
+        call("PATCH", "/issues/1", { state: "In Progress" });
+
+        const body = call("GET", "/status").json<{ inProgress: unknown[] }>();
+
+        expect(body.inProgress).toEqual([1]);
+    });
+
+    it("carries no file paths or parser internals", () => {
+        seed();
+        call("PATCH", "/issues/1", { state: "In Progress" });
+
+        const raw = JSON.stringify(call("GET", "/status").body);
+
+        expect(raw).not.toContain("unknownSections");
+        expect(raw).not.toContain(".motte/issues");
+    });
+});

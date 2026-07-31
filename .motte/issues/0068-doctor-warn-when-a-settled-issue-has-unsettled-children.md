@@ -5,7 +5,7 @@ state: Todo
 parent: 24
 labels: [cli, core]
 created: 2026-07-30T14:39:52Z
-updated: 2026-07-30T14:39:52Z
+updated: 2026-07-31T15:21:25Z
 ---
 
 ## Description
