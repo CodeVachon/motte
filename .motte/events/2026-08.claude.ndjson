@@ -3,3 +3,4 @@
 {"at":"2026-08-04T16:19:05Z","id":34,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-08-04T16:41:34Z","id":79,"by":"claude","as":"agent","type":"created","title":"Automated tests for the web views","state":"Todo"}
 {"at":"2026-08-04T16:41:35Z","id":34,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-04T17:36:23Z","id":61,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
