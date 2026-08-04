@@ -80,3 +80,11 @@ works as well as `motte show 12`.
 - A command may signal failure either by calling `process.exit` or by assigning `process.exitCode`; both
   are in use. Anything driving the CLI in-process has to read both, or every failing command looks like
   a success.
+- The web views are tested with jsdom and `@testing-library/react`, selected per file with a
+  `/** @vitest-environment jsdom */` docblock — not globally, because everything in `packages/` is a Node
+  program and a fake DOM there would mislead. Use testing-library's `waitFor`, not `vi.waitFor`: only the
+  former wraps its polling in `act()`, and the difference shows up as React warnings rather than failures.
+- Playwright is a **pre-release manual check**, not part of CI. Run it against `motte serve` when the web UI
+  changes in a way component tests cannot judge — drag gestures, layout, whether it actually looks right.
+  Deliberately not automated: a headless browser in every run costs a large download and adds a flake
+  surface, and the release workflow already runs the compiled binary end to end on Linux and Windows.

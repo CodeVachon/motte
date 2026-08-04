@@ -8,3 +8,5 @@
 {"at":"2026-08-04T17:44:12Z","id":80,"by":"claude","as":"agent","type":"created","title":"The web UI does not say when it has lost the server","state":"Todo"}
 {"at":"2026-08-04T17:44:54Z","id":35,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-08-04T17:44:54Z","id":6,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-04T17:51:16Z","id":79,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-04T17:59:51Z","id":79,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

@@ -13,7 +13,7 @@ export default defineConfig({
     },
     test: {
         globals: true,
-        include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts"],
+        include: ["packages/*/src/**/*.test.{ts,tsx}", "apps/*/src/**/*.test.{ts,tsx}"],
         /**
          * The CLI tests spawn a real subprocess per assertion, which is the point — wiring and exit
          * codes are what break — but it makes them an order of magnitude slower than the unit tests.
@@ -27,8 +27,8 @@ export default defineConfig({
              * headline coverage number would move whenever an untested build script is added — for
              * reasons that have nothing to do with test quality.
              */
-            include: ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
-            exclude: ["**/*.test.ts", "**/generated/**", "**/testing/**"]
+            include: ["packages/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
+            exclude: ["**/*.test.{ts,tsx}", "**/generated/**", "**/testing/**"]
         }
     }
 });
