@@ -1,8 +1,8 @@
 # Changelog
 
-Everything below 1.0 ships as a pre-release. The CLI, the MCP server and the web UI all work; what is
-still missing for 1.0 is the documentation site, and the schema URLs that every `.motte.config.json`
-points at.
+Everything below 1.0 ships as a pre-release. Releases up to 0.4.0 shipped without the documentation
+site or the schema URLs every `.motte.config.json` points at; both are live now, on `main`, and go
+out with the next release.
 
 ## 0.4.0
 
