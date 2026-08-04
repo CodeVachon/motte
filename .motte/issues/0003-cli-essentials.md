@@ -1,10 +1,10 @@
 ---
 id: 3
 title: CLI essentials
-state: In Progress
+state: Done
 labels: [cli]
 created: 2026-07-29T11:22:00Z
-updated: 2026-07-29T16:04:10Z
+updated: 2026-08-04T21:27:23Z
 ---
 
 ## Description
@@ -32,3 +32,7 @@ subsequent issue is created with motte itself.
 ### 2026-07-29T16:04:10Z — claude (agent)
 
 init, add, list, show, edit, move, assign, note, status, tree and doctor all work, each with --json. Verified by hand against a scratch project. Still outstanding: committing that smoke run as an automated test.
+
+### 2026-08-04T21:27:23Z — claude (agent)
+
+Every child has settled: init, the everyday commands, list/show/tree, status, doctor, the smoke test, the EPIPE fix, the prune tests and the bare-motte fix. Closing it — doctor's new open-with-settled-children warning is what surfaced that it was still open.

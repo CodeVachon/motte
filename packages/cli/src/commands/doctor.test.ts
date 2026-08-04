@@ -7,6 +7,7 @@ import {
     issueFileProblems,
     roundTripProblems,
     staleProblems,
+    subtreeProblems,
     unparseableProblems
 } from "./doctor.js";
 
@@ -263,5 +264,105 @@ describe("the summary line", () => {
 
         await motte(root, ["add", "And another", "-d", "y"]);
         expect((await motte(root, ["doctor"])).stdout).toContain("2 issues,");
+    });
+});
+
+/**
+ * A parent whose state disagrees with its subtree.
+ *
+ * Both directions, because both happened in this repository and neither was noticeable. #0064 was filed
+ * under an epic that was already Done, so the tree reported that epic complete while it carried unstarted
+ * work. And #0004 sat open through four releases after every child of it had settled.
+ */
+describe("subtreeProblems", () => {
+    const parent = (id: number, state: string): Issue => issue({ id, state, parent: undefined });
+    const child = (id: number, state: string, under: number): Issue =>
+        issue({ id, state, parent: under });
+
+    /** DEFAULT_STATES has no cancelled state; this project's own config adds one, as most would. */
+    const withCancelled = () =>
+        config([...DEFAULT_STATES, { name: "Cancelled", category: "cancelled" }]);
+
+    it("warns when a settled issue still has unsettled children, naming them", () => {
+        const problems = subtreeProblems(config(), [
+            parent(1, "Done"),
+            child(2, "Done", 1),
+            child(3, "Todo", 1)
+        ]);
+
+        expect(problems).toHaveLength(1);
+        expect(problems[0]!.kind).toBe("settled-with-open-children");
+        expect(problems[0]!.message).toContain("#0003");
+        // Naming the open child is the point: the reader has to know what to look at.
+        expect(problems[0]!.message).not.toContain("#0002");
+        expect(problems[0]!.severity).toBe("warning");
+    });
+
+    it("looks at the whole subtree, not just direct children", () => {
+        const problems = subtreeProblems(config(), [
+            parent(1, "Done"),
+            child(2, "Done", 1),
+            child(3, "Todo", 2)
+        ]);
+
+        // #0001's children are all settled; its grandchild is not, and that is still work under it.
+        expect(problems.map((problem) => problem.kind)).toContain("settled-with-open-children");
+        expect(problems[0]!.message).toContain("#0003");
+    });
+
+    it("warns when an open issue has nothing unsettled left under it", () => {
+        const problems = subtreeProblems(withCancelled(), [
+            parent(1, "In Progress"),
+            child(2, "Done", 1),
+            child(3, "Cancelled", 1)
+        ]);
+
+        expect(problems).toHaveLength(1);
+        expect(problems[0]!.kind).toBe("open-with-settled-children");
+        expect(problems[0]!.message).toContain("#0001");
+    });
+
+    /** A cancelled child is settled: abandoned work is never coming back to be finished. */
+    it("counts a cancelled child as settled in both directions", () => {
+        expect(
+            subtreeProblems(withCancelled(), [parent(1, "Done"), child(2, "Cancelled", 1)])
+        ).toHaveLength(0);
+    });
+
+    it("says nothing about a parent that agrees with its children", () => {
+        expect(
+            subtreeProblems(config(), [
+                parent(1, "In Progress"),
+                child(2, "Done", 1),
+                child(3, "Todo", 1)
+            ])
+        ).toHaveLength(0);
+    });
+
+    it("says nothing about issues with no children at all", () => {
+        expect(subtreeProblems(config(), [parent(1, "Done"), parent(2, "Todo")])).toHaveLength(0);
+    });
+
+    it("caps how many children it names, so a large epic stays readable", () => {
+        const children = Array.from({ length: 9 }, (_, index) => child(index + 2, "Todo", 1));
+
+        const problems = subtreeProblems(config(), [parent(1, "Done"), ...children]);
+
+        expect(problems[0]!.message).toContain("and 3 more");
+    });
+
+    /** States are user-defined, so settledness has to come from the category rather than the name. */
+    it("uses the configured categories rather than state names", () => {
+        const states = [
+            { name: "Open", category: "unstarted" as const },
+            { name: "Shipped", category: "completed" as const }
+        ];
+
+        const problems = subtreeProblems({ ...config(states), defaultState: "Open" }, [
+            parent(1, "Shipped"),
+            child(2, "Open", 1)
+        ]);
+
+        expect(problems[0]!.kind).toBe("settled-with-open-children");
     });
 });

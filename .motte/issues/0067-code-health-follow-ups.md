@@ -1,10 +1,10 @@
 ---
 id: 67
 title: Code health follow-ups
-state: Done
+state: In Progress
 labels: [health]
 created: 2026-07-30T14:39:51Z
-updated: 2026-07-30T18:04:48Z
+updated: 2026-08-04T21:27:23Z
 ---
 
 ## Description
@@ -55,3 +55,7 @@ Left open under this epic: #0074, the deps/reads filter duplication.
 If the goal is an A, the honest next lever is neither of these children — it is prune.ts and upgrade.ts,
 which hold the four highest CRAP scores in the project at 420, 182, 110 and 110, all at 0% coverage. That is
 a testing gap, not a structural one.
+
+### 2026-08-04T21:27:23Z — claude (agent)
+
+Reopened rather than detaching #0074. This epic exists to hold the follow-ups from the health audit, and #0074 is one — so the truthful state is that it still has open work, not that it is done and something unrelated happens to point at it. Closes when #0074 lands.

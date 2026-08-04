@@ -1,10 +1,10 @@
 ---
 id: 4
 title: Installer and release pipeline
-state: Todo
+state: Done
 labels: [infra, dist]
 created: 2026-07-29T11:23:00Z
-updated: 2026-08-04T18:08:58Z
+updated: 2026-08-04T21:19:47Z
 ---
 
 ## Description
@@ -61,3 +61,7 @@ add and doctor but never `serve`, so a binary that shipped without the embedded 
 every gate. It now starts the built binary, refuses the placeholder page, and fetches the hashed bundle the
 entry document names. Confirmed it ran in this release's log: "served the embedded interface and
 /assets/index-CjgQJwOu.js". Same class of gap as the Windows binary that shipped unrun for two releases.
+
+### 2026-08-04T21:19:47Z — claude (agent)
+
+Every child is settled: install.sh, install.ps1, the cross-compile release workflow, upgrade/uninstall, the upgrade tests and the Windows verification are all Done, and publishing to npm was cancelled deliberately. Four releases have shipped through this pipeline and been installed from the live API by hand, so closing the epic. Nothing warned that this parent was still open while its whole subtree had settled — the inverse of the check #0068 describes, and worth folding into it.

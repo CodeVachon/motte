@@ -2,7 +2,9 @@ import type { CommandModule } from "yargs";
 import {
     buildTree,
     dependencyProblems,
+    flattenTree,
     idFromFilename,
+    isSettled,
     stateCategory,
     timeInState,
     type BrokenEventLine,
@@ -132,6 +134,62 @@ export function blockerProblems(config: Config, issues: readonly Issue[]): Probl
     }));
 }
 
+/** Ids as `#0007, #0042`, capped so one enormous epic cannot produce an unreadable line. */
+function nameIds(issues: readonly Issue[]): string {
+    const shown = issues.slice(0, 6).map((issue) => `#${String(issue.id).padStart(4, "0")}`);
+    const rest = issues.length - shown.length;
+
+    return rest > 0 ? `${shown.join(", ")} and ${rest} more` : shown.join(", ");
+}
+
+/**
+ * Parents whose state disagrees with their subtree, in both directions.
+ *
+ * Warnings rather than errors: either can be deliberate for a while. But both are quiet, and both have
+ * happened here. #0064 was filed under #0005 after #0005 was closed, so the tree reported that epic
+ * complete while it carried unstarted work and `status` listed the work under no active epic. The inverse
+ * caught #0004, which sat open for four releases after every child of it had settled — the release
+ * pipeline was finished and nothing said so.
+ *
+ * One pass over the tree that `hierarchyProblems` already builds, so an epic with fifty children costs
+ * the same as one with two.
+ */
+export function subtreeProblems(config: Config, issues: readonly Issue[]): Problem[] {
+    const problems: Problem[] = [];
+
+    for (const node of flattenTree(buildTree([...issues]).roots)) {
+        if (node.children.length === 0) continue;
+
+        const family = flattenTree(node.children).map((child) => child.issue);
+        const unsettled = family.filter((issue) => !isSettled(config, issue));
+        const settled = isSettled(config, node.issue);
+
+        if (settled && unsettled.length > 0) {
+            problems.push({
+                severity: "warning",
+                kind: "settled-with-open-children",
+                message:
+                    `#${String(node.issue.id).padStart(4, "0")} is "${node.issue.state}" but ` +
+                    `${nameIds(unsettled)} under it ${unsettled.length === 1 ? "is" : "are"} not settled`,
+                file: node.issue.filePath
+            });
+        }
+
+        if (!settled && unsettled.length === 0) {
+            problems.push({
+                severity: "warning",
+                kind: "open-with-settled-children",
+                message:
+                    `#${String(node.issue.id).padStart(4, "0")} is "${node.issue.state}" but every ` +
+                    `issue under it has settled`,
+                file: node.issue.filePath
+            });
+        }
+    }
+
+    return problems;
+}
+
 /** Per-issue checks: an unconfigured state, a filename that disagrees with the frontmatter, no description. */
 export function issueFileProblems(config: Config, issues: readonly Issue[]): Problem[] {
     const problems: Problem[] = [];
@@ -239,6 +297,7 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
             ...staleProblems(config, issues, log.events, args.staleAfter ?? 7),
             ...eventLogProblems(log.broken),
             ...blockerProblems(config, issues),
+            ...subtreeProblems(config, issues),
             ...issueFileProblems(config, issues)
         ];
 

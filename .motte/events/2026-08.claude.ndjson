@@ -19,3 +19,10 @@
 {"at":"2026-08-04T18:53:32Z","id":7,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
 {"at":"2026-08-04T21:09:22Z","id":80,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-08-04T21:19:09Z","id":80,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-04T21:19:47Z","id":4,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
+{"at":"2026-08-04T21:19:47Z","id":68,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-04T21:26:22Z","id":81,"by":"claude","as":"agent","type":"created","title":"Three tests failed twice under load and I could not identify them","state":"Todo"}
+{"at":"2026-08-04T21:26:34Z","id":68,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-04T21:27:23Z","id":81,"by":"claude","as":"agent","type":"parent","from":9,"to":null}
+{"at":"2026-08-04T21:27:23Z","id":3,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-04T21:27:23Z","id":67,"by":"claude","as":"agent","type":"state","from":"Done","to":"In Progress"}

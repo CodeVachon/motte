@@ -227,6 +227,11 @@ is preserved verbatim** when motte rewrites the file, so the format never fights
 
 An "epic" is not a separate type — it is just an issue with children.
 
+`motte doctor` warns when a parent's state disagrees with its subtree, in either direction: closed while
+work under it is still open, or still open when everything under it has settled. Both are quiet
+otherwise, and both mislead the progress report — a closed epic carrying open work reports complete, and
+an open one with nothing left in it never reports finished.
+
 ## Configuration
 
 `.motte.config.json`, discovered by walking up from the working directory the way git finds `.git`:
