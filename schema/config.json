@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "issuesDir": {
+      "default": ".motte/issues",
+      "type": "string",
+      "minLength": 1
+    },
+    "states": {
+      "default": [
+        { "name": "Todo", "category": "unstarted" },
+        { "name": "In Progress", "category": "started" },
+        { "name": "Done", "category": "completed" }
+      ],
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "category": {
+            "type": "string",
+            "enum": ["unstarted", "started", "completed", "cancelled"]
+          },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+        },
+        "required": ["name", "category"]
+      }
+    },
+    "defaultState": { "type": "string", "minLength": 1 },
+    "events": {
+      "default": { "enabled": true },
+      "type": "object",
+      "properties": { "enabled": { "default": true, "type": "boolean" } }
+    }
+  },
+  "$id": "https://codevachon.github.io/motte/schema/config.json",
+  "title": "motte project configuration",
+  "description": "The .motte.config.json at the root of a motte project. Every field is optional: an empty object is a valid config, and motte applies the defaults described here."
+}

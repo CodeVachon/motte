@@ -32,6 +32,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "doctor": "bun run packages/cli/src/index.ts doctor",
+    "schemas": "bun run scripts/emit-schemas.ts",
     "build:cli": "bun run build:web && bun build --compile --outfile=bin/motte packages/cli/src/index.ts",
     "build:release": "bun run build:web && bun run scripts/build-release.ts"
   },

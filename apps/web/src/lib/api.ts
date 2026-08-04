@@ -20,13 +20,10 @@ import type {
  * environment.
  */
 
-export type {
-    ConfigResponse,
-    IssueListResponse,
-    IssueResponse,
-    StatusResponse,
-    TreeResponse
-} from "@motte/cli/serve/api.js";
+// Re-exported so views import their types from the client they call rather than reaching into the CLI
+// package. Only the shapes a view actually names are forwarded — the list and tree responses are consumed
+// through `api.issues()` and `api.tree()`, whose return types carry them.
+export type { ConfigResponse, IssueResponse, StatusResponse } from "@motte/cli/serve/api.js";
 
 /** A response the server refused. Carries the status so a caller can tell 404 from 409. */
 export class ApiError extends Error {
@@ -77,7 +74,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Fields a write may set. Mirrors what the server accepts, which mirrors what the CLI accepts. */
-export interface IssueWrite {
+interface IssueWrite {
     title?: string;
     description?: string;
     plan?: string;

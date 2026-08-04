@@ -142,3 +142,4 @@ export {
     type WatchFactory,
     type WatchOptions
 } from "./watch.js";
+export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/json.js";
