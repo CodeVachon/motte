@@ -186,8 +186,16 @@ function createMotteServer(config: Config, options: ServeOptions = {}): Server {
 
     const context = (): ApiContext => ({
         config,
-        // Notes and transitions from the browser are a person's, not an agent's.
-        store: new IssueStore(config, { name: "web", type: "user" })
+        /**
+         * No explicit author, so the store resolves one the same way the CLI does: the git user.
+         *
+         * An earlier version passed `{ name: "web" }`, which made the log disagree with itself — a state
+         * change from the browser was recorded as `web` while a note typed in the same page was recorded
+         * under the git user, because notes resolve their author separately. The log exists to say who did
+         * something and whether they were a person or an agent, and the answer for the web UI is the person
+         * sitting at the machine. The CLI does not label itself `cli` either.
+         */
+        store: new IssueStore(config)
     });
 
     const server = createServer((request, response) => {

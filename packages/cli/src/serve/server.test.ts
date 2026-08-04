@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { request as httpRequest } from "node:http";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ import { directoryAssets } from "./assets.js";
 
 let config: Config;
 let running: RunningServer;
+let previousAuthor: string | undefined;
 
 function project(): Config {
     const root = mkdtempSync(join(tmpdir(), "motte-serve-"));
@@ -34,12 +35,21 @@ function project(): Config {
 }
 
 beforeEach(async () => {
+    // Pinned, because author resolution otherwise falls through to `git config user.name` — which is a
+    // different name on every machine and unset on CI. Without this the actor assertions below would test
+    // the environment rather than the server.
+    previousAuthor = process.env.MOTTE_AUTHOR;
+    process.env.MOTTE_AUTHOR = "Test User";
+
     config = project();
     running = await startMotteServer(config);
 });
 
 afterEach(async () => {
     await running.close();
+
+    if (previousAuthor === undefined) delete process.env.MOTTE_AUTHOR;
+    else process.env.MOTTE_AUTHOR = previousAuthor;
 });
 
 function get(path: string, init: RequestInit = {}): Promise<Response> {
@@ -131,13 +141,42 @@ describe("the JSON API over HTTP", () => {
         expect((await get("/api/nope")).status).toBe(404);
     });
 
-    /** A write from the browser is a person's, not an agent's — it is a human interface. */
-    it("attributes a note from the web to a person", async () => {
+    /**
+     * A write from the browser is a person's, not an agent's, and it is recorded under the same name the CLI
+     * would use. An earlier version named the actor "web", which made a state change and a note made in the
+     * same click disagree about who did it — notes resolve their author separately.
+     */
+    it("attributes a write from the web to the same person the CLI would", async () => {
         await post("/api/issues", { title: "Noted" });
         await post("/api/issues/1/notes", { body: "Typed into the browser." });
+        await get("/api/issues/1", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ state: "Done" })
+        });
 
         const issue = await (await get("/api/issues/1")).json();
-        expect(issue.notes.at(-1).author.type).toBe("user");
+        const note = issue.notes.at(-1);
+
+        expect(note.author.type).toBe("user");
+        expect(note.author.name).toBe("Test User");
+
+        // The event log has to agree with the note about who did it.
+        const events = readFileSync(
+            join(
+                config.root,
+                ".motte",
+                "events",
+                readdirSync(join(config.root, ".motte", "events"))[0]!
+            ),
+            "utf8"
+        )
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as { by: string; as: string });
+
+        expect(new Set(events.map((event) => event.by))).toEqual(new Set(["Test User"]));
+        expect(new Set(events.map((event) => event.as))).toEqual(new Set(["user"]));
     });
 
     /**
@@ -229,7 +268,13 @@ describe("server-sent events", () => {
         await reader.cancel();
     });
 
-    it("pushes a change when the backlog is written to", async () => {
+    /**
+     * The only test here that waits on the operating system to notice a file write. macOS delivers directory
+     * events anywhere from immediately to not within several seconds under load, which is why `watch.test.ts`
+     * injects a fake watcher for everything except one integration case. This is the equivalent case for the
+     * server, so it retries for the same reason.
+     */
+    it("pushes a change when the backlog is written to", { retry: 3 }, async () => {
         const response = await get("/api/events");
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
@@ -255,7 +300,7 @@ describe("server-sent events", () => {
 
         expect(text).toContain("event: change");
         await reader.cancel();
-    }, 25_000);
+    });
 
     it("stops counting a subscriber once it disconnects", async () => {
         const response = await get("/api/events");

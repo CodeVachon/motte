@@ -1,148 +1,146 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, subscribe, ApiError, type ConfigResponse, type StatusResponse } from "./lib/api.js";
 import { cn } from "./lib/cn.js";
+import { href, navigate, useRoute, type Route } from "./lib/router.js";
+import { useBacklog, type Backlog } from "./lib/useBacklog.js";
+import { Board } from "./views/Board.js";
+import { Detail } from "./views/Detail.js";
+import { Reports } from "./views/Reports.js";
+import { Tree } from "./views/Tree.js";
 
 /**
- * The shell: enough to prove the whole path works end to end — served assets, the JSON API, and a live
- * update when the backlog changes underneath.
+ * The shell: header, navigation, and whichever view the URL names.
  *
- * The board, tree, issue detail and reports are #0034. What is here deliberately is the plumbing every one
- * of those views will need: loading, the error state for a server that has stopped, and the SSE
- * subscription that makes a tab notice an agent's write.
+ * One `useBacklog` for the whole app rather than per-view fetching, so switching tabs is instant and every
+ * view reads the same snapshot. A backlog is a few dozen files; holding all of it is cheaper than keeping
+ * several partial copies in step.
  */
 
-const CATEGORY_COLOUR: Record<string, string> = {
-    unstarted: "bg-unstarted",
-    started: "bg-started",
-    completed: "bg-completed",
-    cancelled: "bg-cancelled"
-};
+const TABS: { route: Route; label: string }[] = [
+    { route: { name: "board" }, label: "Board" },
+    { route: { name: "tree" }, label: "Tree" },
+    { route: { name: "reports" }, label: "Reports" }
+];
 
-function ProgressBar({ status }: { status: StatusResponse }) {
+function Tab({ route, label, active }: { route: Route; label: string; active: boolean }) {
+    const path = href(route);
+
     return (
-        <div
-            className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
-            role="progressbar"
-            aria-valuenow={status.percentComplete}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Project completion"
+        <a
+            href={path}
+            onClick={(event) => {
+                // Left-click navigates in-app; a modified click keeps its normal browser meaning, so
+                // open-in-new-tab still works.
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                event.preventDefault();
+                navigate(path);
+            }}
+            data-testid={`tab-${label.toLowerCase()}`}
+            className={cn(
+                "rounded-lg px-3 py-1.5 text-sm",
+                active ? "bg-muted font-medium" : "text-muted-foreground hover:text-foreground"
+            )}
         >
-            {status.byState
-                .filter((bucket) => bucket.count > 0)
-                .map((bucket) => (
-                    <div
-                        key={bucket.state}
-                        className={cn("h-full", CATEGORY_COLOUR[bucket.category] ?? "bg-muted")}
-                        style={{ width: `${(bucket.count / Math.max(1, status.total)) * 100}%` }}
-                        title={`${bucket.state}: ${bucket.count}`}
-                    />
-                ))}
-        </div>
+            {label}
+        </a>
     );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-    return (
-        <div className="rounded-lg border border-border bg-card p-4">
-            <div className="text-2xl font-semibold tabular-nums">{value}</div>
-            <div className="text-sm text-muted-foreground">{label}</div>
-        </div>
-    );
+function View({ route, backlog }: { route: Route; backlog: Backlog }) {
+    switch (route.name) {
+        case "board":
+            return <Board backlog={backlog} />;
+        case "tree":
+            return <Tree backlog={backlog} />;
+        case "reports":
+            return <Reports backlog={backlog} />;
+        case "issue":
+            return <Detail backlog={backlog} id={route.id} />;
+        case "unknown":
+            return (
+                <div data-testid="not-found">
+                    <p className="mb-3 text-sm">
+                        Nothing at <code className="font-mono">{route.path}</code>.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => navigate(href({ name: "board" }))}
+                        className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        Back to the board
+                    </button>
+                </div>
+            );
+    }
 }
 
 export function App() {
-    const [config, setConfig] = useState<ConfigResponse | undefined>(undefined);
-    const [status, setStatus] = useState<StatusResponse | undefined>(undefined);
-    const [error, setError] = useState<string | undefined>(undefined);
+    const route = useRoute();
+    const backlog = useBacklog();
 
-    const load = useCallback(async () => {
-        try {
-            const [nextConfig, nextStatus] = await Promise.all([api.config(), api.status()]);
-            setConfig(nextConfig);
-            setStatus(nextStatus);
-            setError(undefined);
-        } catch (thrown) {
-            setError(thrown instanceof ApiError ? thrown.message : String(thrown));
-        }
-    }, []);
-
-    useEffect(() => {
-        void load();
-        // Re-fetch rather than patching from the event: the server reports that something changed, not what.
-        return subscribe(() => void load());
-    }, [load]);
-
-    if (error !== undefined) {
-        return (
-            <main className="mx-auto max-w-2xl p-8" data-testid="error">
-                <h1 className="mb-2 text-xl font-semibold">motte is not reachable</h1>
-                <p className="text-muted-foreground">{error}</p>
-            </main>
-        );
-    }
-
-    if (config === undefined || status === undefined) {
-        return (
-            <main className="mx-auto max-w-2xl p-8 text-muted-foreground" data-testid="loading">
-                Loading…
-            </main>
-        );
-    }
+    // An issue page is reached from the board, so the board stays the highlighted tab while on one.
+    const active = route.name === "issue" || route.name === "unknown" ? "board" : route.name;
 
     return (
-        <main className="mx-auto max-w-4xl p-8" data-testid="dashboard">
-            <header className="mb-8">
-                <h1 className="text-2xl font-semibold" data-testid="project-name">
-                    {config.name}
-                </h1>
-                <p className="font-mono text-sm text-muted-foreground">{config.root}</p>
+        <div className="min-h-full">
+            <header className="border-b border-border">
+                <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4">
+                    <div className="flex-1">
+                        <a
+                            href="/"
+                            onClick={(event) => {
+                                if (event.metaKey || event.ctrlKey || event.button !== 0) return;
+                                event.preventDefault();
+                                navigate("/");
+                            }}
+                            className="text-lg font-semibold"
+                            data-testid="project-name"
+                        >
+                            {backlog.config?.name ?? "motte"}
+                        </a>
+                        {backlog.status !== undefined && (
+                            <p className="text-xs text-muted-foreground" data-testid="summary">
+                                {backlog.status.percentComplete}% · {backlog.status.completed} of{" "}
+                                {backlog.status.counted} done · {backlog.status.ready.length} ready
+                            </p>
+                        )}
+                    </div>
+                    <nav className="flex items-center gap-1">
+                        {TABS.map((tab) => (
+                            <Tab
+                                key={tab.label}
+                                route={tab.route}
+                                label={tab.label}
+                                active={active === tab.route.name}
+                            />
+                        ))}
+                    </nav>
+                </div>
             </header>
 
-            <section className="mb-8">
-                <div className="mb-2 flex items-baseline justify-between">
-                    <span className="text-sm text-muted-foreground">Progress</span>
-                    <span className="text-sm tabular-nums" data-testid="percent">
-                        {status.percentComplete}%
-                    </span>
+            {backlog.error !== undefined && (
+                <div className="mx-auto mt-4 max-w-6xl px-6" role="alert" data-testid="error">
+                    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 text-sm">
+                        <span className="text-started">!</span>
+                        <span className="flex-1">{backlog.error}</span>
+                        <button
+                            type="button"
+                            onClick={() => void backlog.reload()}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                            retry
+                        </button>
+                    </div>
                 </div>
-                <ProgressBar status={status} />
-            </section>
+            )}
 
-            <section className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Stat label="Total" value={status.total} />
-                <Stat label="Done" value={status.completed} />
-                <Stat label="Ready" value={status.ready.length} />
-                <Stat label="Blocked" value={status.blocked.length} />
-            </section>
-
-            <section>
-                <h2 className="mb-3 text-sm font-medium text-muted-foreground">By state</h2>
-                <ul
-                    className="divide-y divide-border rounded-lg border border-border"
-                    data-testid="by-state"
-                >
-                    {status.byState.map((bucket) => (
-                        <li key={bucket.state} className="flex items-center gap-3 p-3">
-                            <span
-                                className={cn(
-                                    "size-2 rounded-full",
-                                    CATEGORY_COLOUR[bucket.category] ?? "bg-muted"
-                                )}
-                            />
-                            <span className="flex-1">{bucket.state}</span>
-                            <span className="tabular-nums text-muted-foreground">
-                                {bucket.count}
-                            </span>
-                        </li>
-                    ))}
-                </ul>
-            </section>
-
-            <p className="mt-8 text-sm text-muted-foreground">
-                The board, tree and issue views are next — see #0034. This page updates on its own
-                when the backlog changes on disk.
-            </p>
-        </main>
+            <main className="mx-auto max-w-6xl px-6 py-6">
+                {backlog.loading && backlog.config === undefined ? (
+                    <p className="text-sm text-muted-foreground" data-testid="loading">
+                        Loading…
+                    </p>
+                ) : (
+                    <View route={route} backlog={backlog} />
+                )}
+            </main>
+        </div>
     );
 }

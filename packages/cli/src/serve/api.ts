@@ -7,6 +7,7 @@ import {
     IssueStore,
     blocked,
     buildTree,
+    epicReports,
     openBlockers,
     projectReport,
     ready,
@@ -149,6 +150,23 @@ function statusBody(config: Config, issues: Issue[]) {
 
     return {
         ...report,
+        /**
+         * Computed here with core's `epicReports` rather than left to the client.
+         *
+         * The web UI first worked these out itself from the issue list, and got a different answer: core
+         * scopes a rollup to the epic *and every descendant*, while the client counted direct children and
+         * excluded the epic. It reported 25% where `motte status --epics` said 20%. Two implementations of
+         * the same question, so one of them had to go.
+         */
+        epics: epicReports(config, issues).map((epic) => ({
+            id: epic.issue.id,
+            title: epic.issue.title,
+            state: epic.issue.state,
+            total: epic.total,
+            counted: epic.counted,
+            completed: epic.completed,
+            percentComplete: epic.percentComplete
+        })),
         // Ids, not whole issues. `projectReport` hands back full `Issue` objects here, which would put
         // `unknownSections` and absolute file paths into an API response — noise the client cannot use, and
         // the same trimming the MCP shape does for the same reason.

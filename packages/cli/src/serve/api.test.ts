@@ -379,3 +379,42 @@ describe("the status response", () => {
         expect(raw).not.toContain(".motte/issues");
     });
 });
+
+describe("epic rollups", () => {
+    /**
+     * The web UI computed these itself once and disagreed with `motte status --epics`: core scopes a rollup
+     * to the epic and every descendant, where the client had counted direct children and left the epic out.
+     * They come from core now, and this pins the definition.
+     */
+    it("scopes a rollup to the epic and all of its descendants", () => {
+        call("POST", "/issues", { title: "Epic" });
+        call("POST", "/issues", { title: "Child", parent: 1 });
+        call("POST", "/issues", { title: "Grandchild", parent: 2 });
+        call("PATCH", "/issues/3", { state: "Done" });
+
+        const epics = call("GET", "/status").json<{
+            epics: { id: number; total: number; completed: number; percentComplete: number }[];
+        }>().epics;
+
+        // #1 and #2 are epics: #1 covers itself plus both descendants, #2 itself plus one.
+        expect(epics.map((epic) => epic.id)).toEqual([1, 2]);
+        expect(epics[0]).toMatchObject({ id: 1, total: 3, completed: 1, percentComplete: 33 });
+        expect(epics[1]).toMatchObject({ id: 2, total: 2, completed: 1, percentComplete: 50 });
+    });
+
+    it("lists no epics when nothing has children", () => {
+        call("POST", "/issues", { title: "Alone" });
+
+        expect(call("GET", "/status").json<{ epics: unknown[] }>().epics).toEqual([]);
+    });
+
+    it("sends ids and numbers rather than whole issues", () => {
+        call("POST", "/issues", { title: "Epic" });
+        call("POST", "/issues", { title: "Child", parent: 1 });
+
+        const raw = JSON.stringify(call("GET", "/status").json<{ epics: unknown[] }>().epics);
+
+        expect(raw).not.toContain("unknownSections");
+        expect(raw).not.toContain("notes");
+    });
+});
