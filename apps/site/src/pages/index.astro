@@ -1,0 +1,594 @@
+---
+/**
+ * The landing page.
+ *
+ * One page on purpose. Someone arriving here wants three things — what this is, how to install it, and
+ * what the thing it writes looks like — and the ReadMe covers everything past that. A docs site that
+ * restates the ReadMe becomes a second copy that disagrees with the first.
+ *
+ * Every code sample lives in this frontmatter rather than inline in the template, because `{` opens an
+ * expression in an Astro template and the samples are full of braces.
+ */
+
+const repo = "https://github.com/CodeVachon/motte";
+
+// Normalised because the site is served under /motte/, and joining a path onto a value that may or may
+// not already end in a slash is exactly how a link ends up with a double one.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const installUnix =
+    "curl -fsSL https://raw.githubusercontent.com/CodeVachon/motte/main/install.sh | sh";
+const installWindows =
+    "irm https://raw.githubusercontent.com/CodeVachon/motte/main/install.ps1 | iex";
+
+const issueFile = `---
+id: 42
+title: Design the schema
+state: In Progress
+parent: 7
+assignee: atlas
+labels: [core]
+blockedBy: [11]
+created: 2026-07-29T14:02:11Z
+updated: 2026-07-29T15:31:04Z
+---
+
+## Description
+
+Define the on-disk issue format so agents and humans can both read it.
+
+## Plan
+
+1. Draft the zod schema
+2. Write round-trip fixtures
+
+## Notes
+
+### 2026-07-29T15:31:04Z — atlas (agent)
+
+Chose frontmatter over pure JSON for diff quality.`;
+
+const tour = [
+    {
+        title: "Start a backlog",
+        code: `motte init
+motte add "Ship the thing"
+motte add "Write the parser" -p 1`,
+        note: "One file per issue under .motte/issues/, committed with the code."
+    },
+    {
+        title: "Move work along",
+        code: `motte move 2 "in progress"
+motte note 2 "Frontmatter diffs better."
+motte assign parser atlas`,
+        note: "Every command takes an id or a fragment of the title."
+    },
+    {
+        title: "See where you are",
+        code: `motte status --epics
+motte ready
+motte log --since 7d`,
+        note: "Readiness is computed from dependencies, never stored."
+    },
+    {
+        title: "Hand it to an agent",
+        code: `motte install --agent claude-code
+motte mcp`,
+        note: "Twelve MCP tools over stdio, including breakdown."
+    }
+];
+
+const surfaces = [
+    {
+        name: "CLI",
+        body: "add, list, show, move, note, block, ready, status, tree, log, prune. Every read command speaks --json, so an agent that is not using MCP still gets structured output."
+    },
+    {
+        name: "Web UI",
+        body: "motte serve opens a board, a tree, issue detail and reports on 127.0.0.1. It is compiled into the binary, and it updates itself when the CLI or an agent writes to the backlog."
+    },
+    {
+        name: "MCP server",
+        body: "motte mcp gives an agent the same operations over stdio. motte install wires it into Claude Code or the Codex CLI. Notes it writes are attributed to the agent, not to you."
+    }
+];
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>motte — a project command center that lives in your repo</title>
+        <meta
+            name="description"
+            content="Issues, plans and notes as committed Markdown files, with a CLI, a local web UI and a built-in MCP server so agents and humans read the same record."
+        />
+        <link rel="canonical" href="https://codevachon.github.io/motte/" />
+        <meta property="og:title" content="motte" />
+        <meta
+            property="og:description"
+            content="A lightweight project command center for small projects. The backlog is committed Markdown, not a hosted tracker."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://codevachon.github.io/motte/" />
+        <link
+            rel="icon"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3E%F0%9F%8F%B0%3C/text%3E%3C/svg%3E"
+        />
+    </head>
+    <body>
+        <header class="hero">
+            <div class="shell">
+                <p class="eyebrow">MIT · macOS, Linux, Windows · no Node, no Bun, no npm</p>
+                <h1>motte</h1>
+                <p class="lede">
+                    A project command center for small projects, where Linear, Jira, or even GitHub
+                    Issues are complete overkill. Take an epic, break it into pieces, and keep the
+                    details <strong>in the repo</strong> — so they travel with the code, and so agents
+                    and humans read the same record.
+                </p>
+
+                <div class="install">
+                    <div class="install-row">
+                        <span class="platform">macOS / Linux</span>
+                        <code>{installUnix}</code>
+                        <button class="copy" data-copy={installUnix} type="button">Copy</button>
+                    </div>
+                    <div class="install-row">
+                        <span class="platform">Windows</span>
+                        <code>{installWindows}</code>
+                        <button class="copy" data-copy={installWindows} type="button">Copy</button>
+                    </div>
+                </div>
+
+                <p class="fine">
+                    One self-contained binary into <code>~/.motte/versions/</code>, linked onto your
+                    PATH. <code>motte upgrade</code> installs alongside and repoints a symlink, so a rollback
+                    is a symlink change.
+                </p>
+
+                <nav class="links">
+                    <a class="button primary" href={repo}>Source on GitHub</a>
+                    <a class="button" href={`${base}/schema/config.json`}>Config schema</a>
+                    <a class="button" href={`${base}/schema/issue.json`}>Issue schema</a>
+                </nav>
+            </div>
+        </header>
+
+        <main class="shell">
+            <section>
+                <h2>Why it exists</h2>
+                <p>
+                    Agents need somewhere durable to keep a plan. A scratch TODO list dies with the
+                    session, and a hosted tracker is a lot of ceremony for a project with forty
+                    issues. motte puts the backlog in <code>.motte/issues/</code> as Markdown with YAML
+                    frontmatter: good diffs, readable on GitHub, editable by hand, and one file per issue
+                    so parallel work rarely conflicts.
+                </p>
+                <p>
+                    Nothing here is a service. There is no account, no API key, and no network call
+                    in normal use — the record is a directory, and <code>git</code> is the sync protocol.
+                </p>
+            </section>
+
+            <section>
+                <h2>An issue is a file</h2>
+                <p>
+                    This is the whole format. Sections are fixed and ordered, missing ones are
+                    tolerated, and any section motte does not recognise is preserved verbatim when
+                    it rewrites the file — so prose you add by hand is never destroyed.
+                </p>
+                <pre
+                    class="file"><span class="filename">.motte/issues/0042-design-the-schema.md</span><code>{issueFile}</code></pre>
+            </section>
+
+            <section>
+                <h2>Three surfaces, one record</h2>
+                <div class="cards">
+                    {
+                        surfaces.map((surface) => (
+                            <article class="card">
+                                <h3>{surface.name}</h3>
+                                <p>{surface.body}</p>
+                            </article>
+                        ))
+                    }
+                </div>
+                <p class="fine">
+                    All three go through the same core, so the CLI, the browser and an agent cannot
+                    drift apart — and a change made in any of them lands in the event log under the
+                    name that made it.
+                </p>
+            </section>
+
+            <section>
+                <h2>A short tour</h2>
+                <div class="tour">
+                    {
+                        tour.map((step) => (
+                            <article class="step">
+                                <h3>{step.title}</h3>
+                                <pre>
+                                    <code>{step.code}</code>
+                                </pre>
+                                <p class="fine">{step.note}</p>
+                            </article>
+                        ))
+                    }
+                </div>
+            </section>
+
+            <section>
+                <h2>
+                    <code>motte serve</code>
+                </h2>
+                <p>
+                    A board, a tree, issue detail and progress reports, on loopback only. It is
+                    read-write, and it follows along over server-sent events when an agent writes to
+                    the backlog from another terminal.
+                </p>
+                <figure>
+                    <img
+                        src={`${base}/serve.png`}
+                        alt="The motte web interface showing a board of issues in Todo, In Progress and Done columns"
+                        width="1440"
+                        height="900"
+                        loading="lazy"
+                    />
+                    <figcaption>motte serve, showing motte's own backlog.</figcaption>
+                </figure>
+            </section>
+        </main>
+
+        <footer class="shell">
+            <p>
+                Built by <a href="https://christophervachon.com">Christopher Vachon</a>. MIT
+                licensed. <a href={repo}>Read the ReadMe</a> for dependencies, pruning, the event log
+                and the rest.
+            </p>
+            <p class="fine">
+                A motte is the fortified command point of a small medieval domain, which maps nicely
+                onto a lightweight project command center.
+            </p>
+        </footer>
+
+        <script is:inline>
+            // Progressive enhancement: the command is selectable text whether or not this runs.
+            for (const button of document.querySelectorAll(".copy")) {
+                button.addEventListener("click", async () => {
+                    await navigator.clipboard.writeText(button.dataset.copy);
+                    const previous = button.textContent;
+                    button.textContent = "Copied";
+                    setTimeout(() => {
+                        button.textContent = previous;
+                    }, 1200);
+                });
+            }
+        </script>
+
+        <style is:global>
+            /**
+             * The same tokens the web UI uses, so the site and the tool look like one thing. Both themes
+             * are defined and the choice follows the operating system — there is no toggle, because a
+             * tool run from a terminal should match the terminal.
+             */
+            :root {
+                --background: oklch(1 0 0);
+                --foreground: oklch(0.15 0.005 285);
+                --card: oklch(1 0 0);
+                --muted: oklch(0.96 0.003 285);
+                --muted-foreground: oklch(0.5 0.01 285);
+                --border: oklch(0.9 0.004 285);
+                --primary: oklch(0.45 0.16 264);
+                --primary-foreground: oklch(0.99 0 0);
+                --shadow: 0 1px 2px oklch(0.15 0.005 285 / 0.06);
+
+                --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+                --sans:
+                    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+                    sans-serif;
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --background: oklch(0.16 0.005 285);
+                    --foreground: oklch(0.95 0.003 285);
+                    --card: oklch(0.2 0.006 285);
+                    --muted: oklch(0.25 0.006 285);
+                    --muted-foreground: oklch(0.68 0.01 285);
+                    --border: oklch(0.3 0.008 285);
+                    --primary: oklch(0.7 0.15 264);
+                    --primary-foreground: oklch(0.16 0.005 285);
+                    --shadow: none;
+                }
+            }
+
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                background: var(--background);
+                color: var(--foreground);
+                font-family: var(--sans);
+                line-height: 1.6;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            .shell {
+                width: 100%;
+                max-width: 60rem;
+                margin: 0 auto;
+                padding: 0 1.5rem;
+            }
+
+            a {
+                color: var(--primary);
+            }
+
+            code {
+                font-family: var(--mono);
+                font-size: 0.9em;
+            }
+
+            p code {
+                background: var(--muted);
+                padding: 0.1em 0.35em;
+                border-radius: 0.25rem;
+            }
+
+            /**
+             * The `pre` is only a box; the `code` inside it is what preserves whitespace.
+             *
+             * That split is deliberate. Prettier indents the `<code>` onto its own line inside the
+             * `<pre>`, and a `pre` honours that indentation — so every block rendered with 36 spaces of
+             * leading whitespace on its first line, which the horizontal scroll then hid. Collapsing
+             * whitespace on the wrapper and preserving it only on the block-level `code` makes the markup's
+             * own formatting irrelevant, rather than something a future `bun run format` can break again.
+             */
+            pre {
+                margin: 0;
+                white-space: normal;
+                overflow-x: auto;
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                padding: 1rem;
+                box-shadow: var(--shadow);
+                font-size: 0.875rem;
+                line-height: 1.55;
+            }
+
+            pre code {
+                display: block;
+                white-space: pre;
+                font-size: inherit;
+            }
+
+            /* --- hero --- */
+
+            .hero {
+                border-bottom: 1px solid var(--border);
+                padding: 4.5rem 0 3.5rem;
+                background:
+                    radial-gradient(
+                        ellipse 60rem 20rem at 50% -8rem,
+                        oklch(from var(--primary) l c h / 0.14),
+                        transparent 70%
+                    ),
+                    var(--background);
+            }
+
+            .eyebrow {
+                margin: 0;
+                font-size: 0.8125rem;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted-foreground);
+            }
+
+            h1 {
+                margin: 0.5rem 0 0;
+                font-size: clamp(3rem, 12vw, 5rem);
+                line-height: 1;
+                letter-spacing: -0.03em;
+                font-family: var(--mono);
+            }
+
+            .lede {
+                max-width: 42rem;
+                margin: 1.25rem 0 0;
+                font-size: 1.1875rem;
+                color: var(--muted-foreground);
+            }
+
+            .lede strong {
+                color: var(--foreground);
+            }
+
+            .install {
+                display: grid;
+                gap: 0.5rem;
+                margin: 2rem 0 1rem;
+            }
+
+            .install-row {
+                display: flex;
+                /* Both this and the `code` inside need it: a grid item and a flex item each refuse to go
+                   below their content width otherwise, and an 80-character command is wider than a phone. */
+                min-width: 0;
+                align-items: center;
+                gap: 0.75rem;
+                flex-wrap: wrap;
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                padding: 0.625rem 0.625rem 0.625rem 0.875rem;
+                box-shadow: var(--shadow);
+            }
+
+            .install-row code {
+                flex: 1 1 20rem;
+                /* A flex item will not shrink below its content width without this, and a one-line command
+                   is 80 characters wide — so on a phone the row pushed the Copy button off the screen and
+                   took the whole page into horizontal scroll. Now the command scrolls inside its own row. */
+                min-width: 0;
+                overflow-x: auto;
+                white-space: nowrap;
+                scrollbar-width: none;
+            }
+
+            .platform {
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: var(--muted-foreground);
+                flex: 0 0 auto;
+            }
+
+            .copy,
+            .button {
+                font: inherit;
+                font-size: 0.875rem;
+                border: 1px solid var(--border);
+                background: var(--muted);
+                color: var(--foreground);
+                border-radius: 0.375rem;
+                padding: 0.3rem 0.75rem;
+                cursor: pointer;
+                text-decoration: none;
+                white-space: nowrap;
+            }
+
+            .copy:hover,
+            .button:hover {
+                border-color: var(--primary);
+            }
+
+            .button.primary {
+                background: var(--primary);
+                border-color: var(--primary);
+                color: var(--primary-foreground);
+            }
+
+            .links {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 1.75rem;
+            }
+
+            .fine {
+                font-size: 0.875rem;
+                color: var(--muted-foreground);
+            }
+
+            /* --- body --- */
+
+            main section {
+                padding: 3.5rem 0 0;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+                letter-spacing: -0.01em;
+                margin: 0 0 0.75rem;
+            }
+
+            h2 code {
+                font-size: 1em;
+            }
+
+            section > p {
+                max-width: 44rem;
+            }
+
+            .file {
+                padding: 0;
+            }
+
+            .filename {
+                display: block;
+                padding: 0.625rem 1rem;
+                border-bottom: 1px solid var(--border);
+                background: var(--muted);
+                border-radius: 0.5rem 0.5rem 0 0;
+                font-family: var(--mono);
+                font-size: 0.8125rem;
+                color: var(--muted-foreground);
+            }
+
+            .file code {
+                padding: 1rem;
+            }
+
+            .cards,
+            .tour {
+                display: grid;
+                gap: 1rem;
+                margin-top: 1.5rem;
+                grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+            }
+
+            .card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                padding: 1.25rem;
+                box-shadow: var(--shadow);
+            }
+
+            .card h3,
+            .step h3 {
+                margin: 0 0 0.5rem;
+                font-size: 1rem;
+            }
+
+            .card p {
+                margin: 0;
+                font-size: 0.9375rem;
+                color: var(--muted-foreground);
+            }
+
+            .step pre {
+                background: var(--background);
+            }
+
+            .step .fine {
+                margin: 0.625rem 0 0;
+            }
+
+            figure {
+                margin: 1.5rem 0 0;
+            }
+
+            figure img {
+                display: block;
+                width: 100%;
+                height: auto;
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                box-shadow: var(--shadow);
+            }
+
+            figcaption {
+                margin-top: 0.625rem;
+                font-size: 0.875rem;
+                color: var(--muted-foreground);
+            }
+
+            footer {
+                margin-top: 4rem;
+                padding: 2rem 1.5rem 3rem;
+                border-top: 1px solid var(--border);
+            }
+
+            footer p {
+                max-width: 44rem;
+            }
+        </style>
+    </body>
+</html>

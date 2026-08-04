@@ -1,4 +1,7 @@
 module.exports = {
+    // Astro needs a plugin to be formatted at all; without it `format:check` fails on every .astro file
+    // with "no parser could be inferred" rather than checking them.
+    plugins: ["prettier-plugin-astro"],
     printWidth: 100,
     tabWidth: 4,
     useTabs: false,

@@ -25,6 +25,10 @@ jobs:
       # release time. typecheck and test already cover apps/web; this covers the bundle.
       - run: bun run build:web
 
+      # Same reasoning for the landing page: pages.yml deploys whatever builds, so a template error
+      # should fail a pull request rather than the deployment that follows it.
+      - run: bun run build:site
+
       - name: Validate this repo's own backlog
         run: bun run doctor
 
