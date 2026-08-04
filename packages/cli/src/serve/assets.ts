@@ -68,10 +68,40 @@ export function directoryAssets(root: string): AssetLookup {
 }
 
 /**
- * What to serve when the SPA has not been built.
+ * Serve the SPA that was embedded at build time.
+ *
+ * The map is base64 rather than raw text so the generator never has to escape anything, and the decode
+ * happens once per asset rather than per request: a localhost server handing out the same few files should
+ * not re-decode them on every reload.
+ */
+export function embeddedAssets(
+    map: Record<string, { type: string; immutable: boolean; base64: string }>
+): AssetLookup {
+    const decoded = new Map<string, Asset>();
+
+    return (pathname) => {
+        const cached = decoded.get(pathname);
+        if (cached !== undefined) return cached;
+
+        const entry = map[pathname];
+        if (entry === undefined) return undefined;
+
+        const asset: Asset = {
+            body: Buffer.from(entry.base64, "base64"),
+            type: entry.type,
+            immutable: entry.immutable
+        };
+        decoded.set(pathname, asset);
+        return asset;
+    };
+}
+
+/**
+ * What to serve when no SPA is available.
  *
  * A page saying so, rather than a 404 that reads like a broken install. The API is fully usable in this
- * state, which is worth telling whoever hit this.
+ * state, which is worth telling whoever hit it — and if this appears from a released binary, the embedding
+ * step did not run, which is worth saying too.
  */
 export function placeholderAssets(): AssetLookup {
     const html = `<!doctype html>
@@ -95,10 +125,11 @@ export function placeholderAssets(): AssetLookup {
 </head>
 <body>
 <main>
-<h1>motte is serving, but the interface has not been built yet</h1>
+<h1>motte is serving, but the interface is not built into this binary</h1>
 <p>
-  The JSON API below is live and complete. The single-page app that consumes it is still being
-  built — see issues #0032 and #0034.
+  The JSON API below is live and complete. What is missing is the single-page app that consumes it,
+  which is compiled in by <code>bun run build:web</code>. A released binary carries it already, so
+  seeing this page from one means the build did not embed it.
 </p>
 <ul>
   <li><code>GET /api/status</code></li>

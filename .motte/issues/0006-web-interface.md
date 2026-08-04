@@ -1,10 +1,10 @@
 ---
 id: 6
 title: Web interface
-state: In Progress
+state: Done
 labels: [web]
 created: 2026-07-29T11:25:00Z
-updated: 2026-07-30T19:46:09Z
+updated: 2026-08-04T17:44:54Z
 ---
 
 ## Description
@@ -27,3 +27,7 @@ and works offline.
 ### 2026-07-29T11:25:00Z — claude (agent)
 
 All writes go through core, so the web UI cannot drift from the CLI and MCP behaviour.
+
+### 2026-08-04T17:44:54Z — claude (agent)
+
+All four children are done: the scaffold (#0032), the API and SSE watcher (#0033), the four views (#0034), and embedding into the binary (#0035). The interface works from an installed binary with no flags. Two follow-ups remain open under this epic and neither blocks use: #0079, automated tests for the views, which is the real gap since their only verification so far is a Playwright pass driven by hand; and #0080, the UI not saying when it has lost the server.

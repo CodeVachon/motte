@@ -324,12 +324,12 @@ describe("server-sent events", () => {
 });
 
 describe("static assets", () => {
-    it("serves a placeholder page explaining the UI is not built yet", async () => {
+    it("serves a placeholder page explaining that no interface is embedded", async () => {
         const response = await get("/");
 
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toMatch(/text\/html/);
-        expect(await response.text()).toContain("has not been built yet");
+        expect(await response.text()).toContain("not built into this binary");
     });
 
     it("serves files from a directory when given one", async () => {
