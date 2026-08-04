@@ -82,6 +82,7 @@ export function backlog(
         status: status(),
         error: refuse,
         loading: false,
+        connection: "live",
         reload: () => Promise.resolve(),
         mutate: async (change) => {
             calls.push(change);

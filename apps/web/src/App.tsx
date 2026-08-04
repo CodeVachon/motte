@@ -116,6 +116,27 @@ export function App() {
                 </div>
             </header>
 
+            {/*
+             * Above the error banner, and deliberately quieter: losing the stream does not mean anything
+             * on screen is wrong, only that it has stopped being updated. Saying so is the whole point —
+             * a stale board and a quiet one look identical, and the browser reconnects silently.
+             */}
+            {backlog.connection === "lost" && (
+                <div
+                    className="mx-auto mt-4 max-w-6xl px-6"
+                    role="status"
+                    data-testid="disconnected"
+                >
+                    <div className="flex items-start gap-3 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
+                        <span className="text-started">●</span>
+                        <span className="flex-1">
+                            Not connected to <code className="font-mono">motte serve</code>. This is
+                            the last data it sent — reconnecting.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {backlog.error !== undefined && (
                 <div className="mx-auto mt-4 max-w-6xl px-6" role="alert" data-testid="error">
                     <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 text-sm">

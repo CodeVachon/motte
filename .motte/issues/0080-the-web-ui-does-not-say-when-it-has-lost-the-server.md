@@ -1,11 +1,11 @@
 ---
 id: 80
 title: The web UI does not say when it has lost the server
-state: Todo
+state: Done
 parent: 6
 labels: [web, bug]
 created: 2026-08-04T17:44:12Z
-updated: 2026-08-04T17:44:12Z
+updated: 2026-08-04T21:19:09Z
 ---
 
 ## Description
@@ -22,3 +22,9 @@ For a tool whose whole purpose is showing where the work stands, silently showin
 2. A quiet banner while disconnected, and clear it on reconnect
 3. Do not fight the browser's own backoff; just say what is happening
 4. Consider whether a reconnect should trigger a reload, since changes made while disconnected were missed
+
+## Notes
+
+### 2026-08-04T21:19:09Z — claude (agent)
+
+subscribe() now reports connection state and the shell shows a quiet notice while the stream is down, keeping the data on screen — it is not wrong, it has only stopped being updated. Recovery re-reads rather than just clearing the notice, because changes made during the outage produced events nobody received and no further event is coming to fix that. Verified in a real browser rather than only in jsdom: with a tab open I stopped motte serve, saw the notice appear, added an issue and moved another to Done from the CLI, restarted, and the notice cleared while the summary went from 0% / 0 of 2 to 33% / 1 of 3 with no reload. One extra case the manual pass exposed: a response EventSource treats as fatal (the 403 from the Host check) closes the stream for good, so a fresh one is opened on a slow timer — otherwise nothing ever recovers. The browser's own backoff is left alone.

@@ -4,6 +4,7 @@ import {
     api,
     subscribe,
     type ConfigResponse,
+    type Connection,
     type IssueResponse,
     type StatusResponse
 } from "./api.js";
@@ -27,6 +28,13 @@ export interface Backlog {
     /** Set when the last load failed. The views keep showing the previous data underneath. */
     error: string | undefined;
     loading: boolean;
+    /**
+     * Whether this tab is still listening for changes.
+     *
+     * Worth showing, because everything on screen is only as current as this: while it is `lost`, an agent
+     * can move half the backlog and the page will not know.
+     */
+    connection: Connection;
     /** Re-read everything. Called after a write, and whenever the server says something changed. */
     reload: () => Promise<void>;
     /** Apply a write, then reload. Errors surface through `error` rather than being thrown at the caller. */
@@ -39,6 +47,7 @@ export function useBacklog(): Backlog {
     const [status, setStatus] = useState<StatusResponse | undefined>(undefined);
     const [error, setError] = useState<string | undefined>(undefined);
     const [loading, setLoading] = useState(true);
+    const [connection, setConnection] = useState<Connection>("connecting");
 
     // A reload triggered by an SSE event can land after the component has gone. Writing state then is
     // harmless in React 18+ but still noise, and skipping it keeps the effect honest about its lifetime.
@@ -93,10 +102,26 @@ export function useBacklog(): Backlog {
 
     useEffect(() => {
         void reload();
-        return subscribe(() => void reload());
+
+        // Held in the effect rather than read back from state: the callback below is created once, so a
+        // state value captured here would be the one from this render forever.
+        let previous: Connection = "connecting";
+
+        return subscribe({
+            change: () => void reload(),
+            connection: (next) => {
+                setConnection(next);
+
+                // Recovering from a drop means re-reading, not just clearing the banner. Changes made while
+                // the stream was down produced events nobody received, so the page is behind by however
+                // long the outage lasted and no further event is coming to fix that.
+                if (next === "live" && previous === "lost") void reload();
+                previous = next;
+            }
+        });
     }, [reload]);
 
-    return { config, issues, status, error, loading, reload, mutate };
+    return { config, issues, status, error, loading, connection, reload, mutate };
 }
 
 /** Group issues into the project's configured states, keeping every state even when empty. */

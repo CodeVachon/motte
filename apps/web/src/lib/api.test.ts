@@ -149,40 +149,129 @@ describe("how failures arrive", () => {
 
 describe("subscribe", () => {
     class FakeEventSource {
-        static last: FakeEventSource | undefined;
-        listeners = new Map<string, EventListener>();
+        static instances: FakeEventSource[] = [];
+        static readonly CONNECTING = 0;
+        static readonly OPEN = 1;
+        static readonly CLOSED = 2;
+
+        listeners = new Map<string, EventListener[]>();
         closed = false;
+        readyState = FakeEventSource.CONNECTING;
 
         constructor(readonly url: string) {
-            FakeEventSource.last = this;
+            FakeEventSource.instances.push(this);
         }
 
         addEventListener(type: string, listener: EventListener): void {
-            this.listeners.set(type, listener);
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
         }
 
-        removeEventListener(type: string): void {
-            this.listeners.delete(type);
+        removeEventListener(type: string, listener: EventListener): void {
+            this.listeners.set(
+                type,
+                (this.listeners.get(type) ?? []).filter((l) => l !== listener)
+            );
         }
 
         close(): void {
             this.closed = true;
+            this.readyState = FakeEventSource.CLOSED;
+        }
+
+        emit(type: string): void {
+            for (const listener of this.listeners.get(type) ?? []) listener(new Event(type));
         }
     }
 
-    it("listens for change events on the SSE endpoint", () => {
+    function start() {
         vi.stubGlobal("EventSource", FakeEventSource);
-        const onChange = vi.fn();
+        FakeEventSource.instances = [];
 
-        const stop = subscribe(onChange);
-        const source = FakeEventSource.last!;
+        const change = vi.fn();
+        const connection = vi.fn();
+        const stop = subscribe({ change, connection });
 
-        expect(source.url).toBe("/api/events");
-        source.listeners.get("change")!(new Event("change"));
-        expect(onChange).toHaveBeenCalledTimes(1);
+        return { change, connection, stop, source: () => FakeEventSource.instances.at(-1)! };
+    }
+
+    it("listens for change events on the SSE endpoint", () => {
+        const { change, stop, source } = start();
+
+        expect(source().url).toBe("/api/events");
+        source().emit("change");
+        expect(change).toHaveBeenCalledTimes(1);
 
         stop();
-        expect(source.closed).toBe(true);
-        expect(source.listeners.has("change")).toBe(false);
+        expect(source().closed).toBe(true);
+        source().emit("change");
+        expect(change).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The state is reported because reconnecting silently is the failure this exists to fix: a tab left on a
+     * stopped server showed a board that looked current while logging 198 failed attempts.
+     */
+    it("reports connecting, then live, then lost", () => {
+        const { connection, source, stop } = start();
+
+        expect(connection).toHaveBeenLastCalledWith("connecting");
+
+        source().readyState = FakeEventSource.OPEN;
+        source().emit("open");
+        expect(connection).toHaveBeenLastCalledWith("live");
+
+        source().emit("error");
+        expect(connection).toHaveBeenLastCalledWith("lost");
+
+        stop();
+    });
+
+    /** A retry in progress is the browser doing its job; a closed stream is nobody doing anything. */
+    it("leaves the browser's own retry alone", () => {
+        const { source, stop } = start();
+
+        source().emit("error");
+
+        expect(FakeEventSource.instances.length).toBe(1);
+        expect(source().closed).toBe(false);
+        stop();
+    });
+
+    it("opens a fresh stream when the browser has given up", async () => {
+        vi.useFakeTimers();
+        try {
+            const { source, stop } = start();
+            const first = source();
+
+            first.readyState = FakeEventSource.CLOSED;
+            first.emit("error");
+            expect(first.closed).toBe(true);
+
+            await vi.advanceTimersByTimeAsync(3000);
+
+            expect(FakeEventSource.instances.length).toBe(2);
+            expect(source().url).toBe("/api/events");
+            stop();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not re-open after the caller has unsubscribed", async () => {
+        vi.useFakeTimers();
+        try {
+            const { source, stop } = start();
+
+            source().readyState = FakeEventSource.CLOSED;
+            source().emit("error");
+            stop();
+
+            await vi.advanceTimersByTimeAsync(10_000);
+
+            // A tab that navigated away must not keep dialling the server it just left.
+            expect(FakeEventSource.instances.length).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

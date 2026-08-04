@@ -114,20 +114,63 @@ export const api = {
         })
 };
 
+/** Whether the change stream is currently connected. */
+export type Connection = "connecting" | "live" | "lost";
+
+export interface Subscription {
+    /** Something in the backlog changed. The server does not say what, so callers re-read. */
+    change: () => void;
+    /** The stream connected, dropped, or is trying again. */
+    connection: (state: Connection) => void;
+}
+
+/** How long to wait before re-opening a stream the browser has given up on. */
+const REOPEN_AFTER_MS = 3000;
+
 /**
  * Subscribe to backlog changes.
  *
- * The server says only that something changed, so `onChange` re-fetches rather than patching state from the
+ * The server says only that something changed, so `change` re-fetches rather than patching state from the
  * event. `EventSource` reconnects on its own, which is the reason for choosing SSE: the interesting case is
  * a tab left open while an agent works, and that tab has to survive the server restarting.
+ *
+ * The connection state is reported because reconnecting silently is worse than not reconnecting at all. A
+ * page showing a stale board looks exactly like a page showing a quiet one, and a reader cannot tell the
+ * difference between "nothing changed" and "I stopped listening an hour ago".
+ *
+ * Two kinds of failure, and they need different handling. Usually `EventSource` retries on its own with its
+ * own backoff, and this does not interfere. But a response it considers fatal — a 403 from the Host check,
+ * say — closes the stream for good, and then nothing recovers it, so it is re-opened here on a slow timer.
  */
-export function subscribe(onChange: () => void): () => void {
-    const source = new EventSource("/api/events");
+export function subscribe({ change, connection }: Subscription): () => void {
+    let source: EventSource | undefined;
+    let reopen: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
 
-    source.addEventListener("change", onChange);
+    const open = (): void => {
+        if (stopped) return;
+
+        connection("connecting");
+        source = new EventSource("/api/events");
+        source.addEventListener("change", change);
+        source.addEventListener("open", () => connection("live"));
+        source.addEventListener("error", () => {
+            connection("lost");
+
+            // CLOSED means the browser will not try again. Anything else is its own retry in progress.
+            if (source?.readyState === EventSource.CLOSED) {
+                source.close();
+                reopen = setTimeout(open, REOPEN_AFTER_MS);
+            }
+        });
+    };
+
+    open();
 
     return () => {
-        source.removeEventListener("change", onChange);
-        source.close();
+        stopped = true;
+        if (reopen !== undefined) clearTimeout(reopen);
+        source?.removeEventListener("change", change);
+        source?.close();
     };
 }
