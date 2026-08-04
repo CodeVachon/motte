@@ -8,7 +8,9 @@ import {
     openBlockers,
     projectReport,
     progressBar,
-    ready
+    ready,
+    type Config,
+    type Issue
 } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import {
@@ -63,59 +65,71 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
             return;
         }
 
-        const out = process.stdout;
-
-        out.write(`\n${heading(report.name)}\n\n`);
-        out.write(`${progressLine(report)}\n\n`);
-
-        const width = Math.max(...report.byState.map((entry) => entry.state.length));
-        for (const entry of report.byState) {
-            const padding = " ".repeat(width - entry.state.length);
-            out.write(`  ${paintState(config, entry.state)}${padding}  ${entry.count}\n`);
-        }
-
-        const readyIssues = ready(config, issues);
-        const blockedIssues = blocked(config, issues);
-
-        if (readyIssues.length > 0 || blockedIssues.length > 0) {
-            out.write(
-                `\n  ${dim("ready")} ${readyIssues.length}   ${dim("blocked")} ${blockedIssues.length}\n`
-            );
-        }
-
-        if (report.inProgress.length > 0) {
-            out.write(`\n${heading("In flight")}\n\n`);
-            for (const issue of report.inProgress) {
-                out.write(`${issueLine(config, issue)}\n`);
-                for (const blocker of openBlockers(config, issues, issue)) {
-                    out.write(
-                        `      ${dim("waiting on")} ${paintId(blocker.id)} ${dim(blocker.title)}\n`
-                    );
-                }
-            }
-        }
-
-        if (args.epics === true) {
-            const epics = epicReports(config, issues);
-            if (epics.length > 0) {
-                out.write(`\n${heading("Epics")}\n\n`);
-                const titleWidth = Math.min(
-                    44,
-                    Math.max(...epics.map((epic) => epic.issue.title.length))
-                );
-                for (const epic of epics) {
-                    const title = epic.issue.title.slice(0, titleWidth).padEnd(titleWidth);
-                    out.write(
-                        `  ${paintId(epic.issue.id)} ${title}  ${progressBar(epic.percentComplete, 12)} ` +
-                            `${String(epic.percentComplete).padStart(3)}%  ${dim(`${epic.completed}/${epic.counted}`)}\n`
-                    );
-                }
-            }
-        }
-
-        out.write("\n");
+        renderStatus(config, issues, args.epics === true);
     }
 };
+
+/**
+ * The human-readable status report.
+ *
+ * Extracted so `motte` with no arguments can print the same thing. Two copies would drift, and the bare
+ * command is the first thing anyone runs.
+ */
+export function renderStatus(config: Config, issues: Issue[], epics: boolean): void {
+    const report = projectReport(config, issues);
+
+    const out = process.stdout;
+
+    out.write(`\n${heading(report.name)}\n\n`);
+    out.write(`${progressLine(report)}\n\n`);
+
+    const width = Math.max(...report.byState.map((entry) => entry.state.length));
+    for (const entry of report.byState) {
+        const padding = " ".repeat(width - entry.state.length);
+        out.write(`  ${paintState(config, entry.state)}${padding}  ${entry.count}\n`);
+    }
+
+    const readyIssues = ready(config, issues);
+    const blockedIssues = blocked(config, issues);
+
+    if (readyIssues.length > 0 || blockedIssues.length > 0) {
+        out.write(
+            `\n  ${dim("ready")} ${readyIssues.length}   ${dim("blocked")} ${blockedIssues.length}\n`
+        );
+    }
+
+    if (report.inProgress.length > 0) {
+        out.write(`\n${heading("In flight")}\n\n`);
+        for (const issue of report.inProgress) {
+            out.write(`${issueLine(config, issue)}\n`);
+            for (const blocker of openBlockers(config, issues, issue)) {
+                out.write(
+                    `      ${dim("waiting on")} ${paintId(blocker.id)} ${dim(blocker.title)}\n`
+                );
+            }
+        }
+    }
+
+    if (epics) {
+        const rollups = epicReports(config, issues);
+        if (rollups.length > 0) {
+            out.write(`\n${heading("Epics")}\n\n`);
+            const titleWidth = Math.min(
+                44,
+                Math.max(...rollups.map((epic) => epic.issue.title.length))
+            );
+            for (const epic of rollups) {
+                const title = epic.issue.title.slice(0, titleWidth).padEnd(titleWidth);
+                out.write(
+                    `  ${paintId(epic.issue.id)} ${title}  ${progressBar(epic.percentComplete, 12)} ` +
+                        `${String(epic.percentComplete).padStart(3)}%  ${dim(`${epic.completed}/${epic.counted}`)}\n`
+                );
+            }
+        }
+    }
+
+    out.write("\n");
+}
 
 interface TreeArgs {
     ref?: string;

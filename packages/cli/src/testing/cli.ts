@@ -84,6 +84,7 @@ export async function motte(
     const previousStdout = process.stdout.write;
     const previousStderr = process.stderr.write;
     const previousLog = console.log;
+    const previousError = console.error;
     const previousExitCode = process.exitCode;
     const previousEnv = new Map<string, string | undefined>();
     /**
@@ -119,9 +120,13 @@ export async function motte(
             stderr += String(chunk);
             return true;
         }) as typeof process.stderr.write;
-        // yargs prints help and version through console.log rather than the stream directly.
+        // yargs prints help and usage through the console rather than the streams directly, and defaults
+        // to console.error for both. Capturing only console.log made that output invisible to tests.
         console.log = (...parts: unknown[]) => {
             stdout += `${parts.map(String).join(" ")}\n`;
+        };
+        console.error = (...parts: unknown[]) => {
+            stderr += `${parts.map(String).join(" ")}\n`;
         };
 
         // Failure is signalled two ways. `report` and yargs call `process.exit`, which the stub above
@@ -144,6 +149,7 @@ export async function motte(
         process.stdout.write = previousStdout;
         process.stderr.write = previousStderr;
         console.log = previousLog;
+        console.error = previousError;
 
         for (const [key, value] of previousEnv) {
             if (value === undefined) delete process.env[key];

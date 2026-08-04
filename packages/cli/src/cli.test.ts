@@ -384,6 +384,66 @@ describe("failure paths", RETRY, () => {
  * Wiring, which is what has actually broken. Each of these corresponds to a real bug found during
  * development, so they are regression tests rather than speculation.
  */
+/**
+ * What bare `motte` does. It used to print `✗ null` and exit 1: `demandCommand` was given an empty message,
+ * and yargs passes null to `.fail` when the message is empty.
+ */
+describe("the bare command", () => {
+    it("shows the status report inside a project", async () => {
+        const root = await initialised();
+        await motte(root, ["add", "Something", "-d", "x"]);
+
+        const run = await motte(root, []);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toContain("Test");
+        expect(run.stdout).toMatch(/1 issue|Todo/);
+    });
+
+    it("points at what to do next", async () => {
+        const run = await motte(await initialised(), []);
+
+        expect(run.stdout).toContain("motte ready");
+        expect(run.stdout).toContain("motte --help");
+    });
+
+    it("never prints a bare null", async () => {
+        const run = await motte(await initialised(), []);
+
+        expect(run.stdout + run.stderr).not.toMatch(/\bnull\b/);
+    });
+
+    it("shows the help and suggests init when there is no project", async () => {
+        const run = await motte(project(), []);
+
+        expect(run.stdout).toContain("motte <command> [options]");
+        expect(run.stdout).toContain("motte init");
+    });
+
+    /**
+     * A flag with no command is not the bare command, so it still has to say which command is missing —
+     * and say it in words rather than as a null.
+     */
+    it("asks which command when given only a flag", async () => {
+        const run = await motte(await initialised(), ["--json"]);
+
+        expect(run.code).toBe(1);
+        expect(run.stderr).toMatch(/Which command/);
+        expect(run.stderr).not.toMatch(/\bnull\b/);
+    });
+
+    /**
+     * Handled before yargs rather than as a `$0` command: registering one turns every unrecognised first
+     * word into an "unknown argument", which silently disables recommendCommands.
+     */
+    it("still suggests a near-miss command", async () => {
+        const run = await motte(await initialised(), ["stauts"]);
+
+        expect(run.code).toBe(1);
+        expect(run.stderr).toMatch(/Did you mean status\?/);
+    });
+});
+
 describe("wiring", RETRY, () => {
     it("reports the version from package.json", async () => {
         const pkg = JSON.parse(

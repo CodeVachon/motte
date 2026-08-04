@@ -3,6 +3,7 @@ import { hideBin } from "yargs/helpers";
 import {
     AmbiguousRefError,
     ConfigError,
+    ConfigNotFoundError,
     CycleError,
     DependencyCycleError,
     IssueNotFoundError,
@@ -29,10 +30,10 @@ import {
 import { showCommand } from "./commands/show.js";
 import { AgentConfigError } from "./install/agents.js";
 import { EditorError } from "./ui/editor.js";
-import { statusCommand, treeCommand } from "./commands/status.js";
+import { renderStatus, statusCommand, treeCommand } from "./commands/status.js";
 import { uninstallCommand, upgradeCommand } from "./commands/upgrade.js";
 import { VERSION as CLI_VERSION } from "./version.js";
-import { error } from "./ui/format.js";
+import { dim, error } from "./ui/format.js";
 
 export { VERSION } from "./version.js";
 
@@ -82,6 +83,40 @@ function report(thrown: unknown): never {
 
     process.stderr.write(`${error(String(thrown))}\n`);
     process.exit(1);
+}
+
+/**
+ * What bare `motte` does.
+ *
+ * Inside a project, the status report: this is a project command center, and "where does the work stand" is
+ * the question someone typing the bare command is asking. Outside one, the help, because there is no
+ * backlog to summarise and what they need is `motte init`.
+ *
+ * Previously this hit `demandCommand` and printed `✗ null`, because yargs passes a null message to `.fail`
+ * when the demand message is empty.
+ */
+function defaultAction(showHelp: () => void): void {
+    let project: ReturnType<typeof context>;
+
+    try {
+        project = context();
+    } catch (thrown) {
+        if (thrown instanceof ConfigNotFoundError) {
+            showHelp();
+            process.stdout.write(`\n${dim("No project here yet. Start one with `motte init`.")}\n`);
+            return;
+        }
+        throw thrown;
+    }
+
+    renderStatus(project.config, project.store.all(), false);
+
+    // A pointer rather than the whole help wall above the report: the two commands that answer "what now",
+    // and where to find the rest.
+    process.stdout.write(
+        `${dim("  motte ready")}    what can be picked up\n` +
+            `${dim("  motte --help")}   every command\n\n`
+    );
 }
 
 export async function run(argv: string[] = hideBin(process.argv)): Promise<void> {
@@ -155,7 +190,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
                 completionFilter();
             }
         )
-        .demandCommand(1, "")
+        .demandCommand(1, "Which command? Run `motte --help`, or `motte` on its own for status.")
         .recommendCommands()
         .strict()
         .help()
@@ -170,9 +205,24 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         // block; rethrow anything else so `report` can format it consistently.
         .fail((message, thrown) => {
             if (thrown) report(thrown);
+            // yargs can call this with a null or empty message. Printing it produced "✗ null"; showing the
+            // usage block is what the user actually needs at that point.
+            if (message === null || message === undefined || message === "") {
+                cli.showHelp();
+                process.exit(1);
+            }
             process.stderr.write(`${error(message)}\n`);
             process.exit(1);
         });
+
+    // The bare command is handled here rather than as a yargs `$0` command. Registering one would make
+    // every unrecognised first word an "unknown argument" instead of an unknown command, which silently
+    // disables `recommendCommands` — `motte stauts` would stop suggesting `status`.
+    if (argv.length === 0) {
+        // "log" rather than the default "error": asking for status outside a project is not a failure.
+        defaultAction(() => cli.showHelp("log"));
+        return;
+    }
 
     await cli.parseAsync();
 }
