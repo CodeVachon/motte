@@ -4,7 +4,7 @@ title: Installer and release pipeline
 state: Todo
 labels: [infra, dist]
 created: 2026-07-29T11:23:00Z
-updated: 2026-07-30T19:05:59Z
+updated: 2026-08-04T18:08:58Z
 ---
 
 ## Description
@@ -47,3 +47,17 @@ upToDate true and isDowngrade false.
 
 That last one is worth noting: it is the first live exercise of the normalizeVersion fix from #0076, since
 it needs a real managed install and a real API response to reach the comparison at all.
+
+### 2026-08-04T18:08:58Z — claude (agent)
+
+v0.4.0 published and verified as a user, not only in CI.
+
+Installed the published release with install.sh into a temp root, resolving the version from the live API.
+The binary reports 0.4.0, and `motte serve` with no flags served the real interface — the board rendering a
+two-issue project in a browser, from a binary downloaded off GitHub with no dist directory anywhere near it.
+
+Added a release check that was missing and mattered for this one: the Linux smoke test ran --version, init,
+add and doctor but never `serve`, so a binary that shipped without the embedded interface would have passed
+every gate. It now starts the built binary, refuses the placeholder page, and fetches the hashed bundle the
+entry document names. Confirmed it ran in this release's log: "served the embedded interface and
+/assets/index-CjgQJwOu.js". Same class of gap as the Windows binary that shipped unrun for two releases.
