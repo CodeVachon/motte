@@ -46,18 +46,19 @@ const MAX_BODY = 1_000_000;
  * A no-auth server bound to loopback is still reachable through DNS rebinding: a page on the internet can
  * resolve its own hostname to 127.0.0.1 and then read this API from the user's browser. Checking that the
  * Host header is a loopback name is what stops that, and it costs nothing.
+ *
+ * The name is checked; the port is not. A browser always sends the port it connected to, so a rebinding
+ * attempt fails on the name regardless — while a local proxy legitimately forwards the port the user
+ * typed, which is a different number. Requiring a match only ever broke the proxy: `bun run dev:web`
+ * forwards `/api` from Vite on 5173 to a `motte serve` on 4321, and every request came back 403.
  */
-function hostAllowed(host: string | undefined, port: number): boolean {
+function hostAllowed(host: string | undefined): boolean {
     if (host === undefined) return false;
 
     const name = host
         .replace(/:\d+$/, "")
         .replace(/^\[|\]$/g, "")
         .toLowerCase();
-    const suffix = host.slice(name.length);
-
-    // Either no port or the one we are listening on.
-    if (suffix !== "" && suffix !== `:${port}`) return false;
 
     return name === "localhost" || name === "127.0.0.1" || name === "::1";
 }
@@ -216,7 +217,7 @@ function createMotteServer(config: Config, options: ServeOptions = {}): Server {
         const address = server.address();
         const port = typeof address === "object" && address !== null ? address.port : 0;
 
-        if (!hostAllowed(request.headers.host, port)) {
+        if (!hostAllowed(request.headers.host)) {
             send(response, 403, {
                 error: "motte serve only answers requests addressed to localhost"
             });

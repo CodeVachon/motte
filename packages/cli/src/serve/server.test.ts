@@ -231,7 +231,7 @@ describe("the Host check", () => {
         expect(JSON.parse(response.body).error).toMatch(/localhost/);
     });
 
-    it("accepts localhost, 127.0.0.1, and either with the right port", async () => {
+    it("accepts localhost and 127.0.0.1, with or without a port", async () => {
         for (const host of [
             "localhost",
             "127.0.0.1",
@@ -242,8 +242,13 @@ describe("the Host check", () => {
         }
     });
 
-    it("refuses a loopback name on somebody else's port", async () => {
-        expect((await getWithHost("/api/status", "localhost:9")).status).toBe(403);
+    /**
+     * A local proxy forwards the port the user typed, not the one this server listens on — `bun run
+     * dev:web` proxies `/api` from Vite on 5173 to a serve on 4321. Requiring the ports to match blocked
+     * that while stopping no attack, since a rebinding attempt is caught by the name.
+     */
+    it("accepts a loopback name carrying somebody else's port", async () => {
+        expect((await getWithHost("/api/status", "localhost:5173")).status).toBe(200);
     });
 
     it("refuses a hostname that merely ends in localhost", async () => {
