@@ -530,7 +530,18 @@ const surfaces = [
                 display: grid;
                 gap: 1rem;
                 margin-top: 1.5rem;
-                grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+                /* `min(…, 100%)` rather than a bare track minimum: a minimum wider than the container
+                   is not clamped to it, so on a phone the grid overflowed and took the page with it. */
+                grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+            }
+
+            /**
+             * Wider tracks than the cards get, because these hold commands rather than prose. At three
+             * columns a 40-character command was clipped and had to be scrolled to be read, which defeats
+             * the point of showing it — the samples exist to be glanced at.
+             */
+            .tour {
+                grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
             }
 
             .card {
