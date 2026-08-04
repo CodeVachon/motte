@@ -3,6 +3,8 @@
 A lightweight project command center for small projects, where Linear, Jira, or even GitHub Issues
 are complete overkill.
 
+**[codevachon.github.io/motte](https://codevachon.github.io/motte/)**
+
 > A motte is the fortified command point of a small medieval domain. That maps nicely to a
 > lightweight project command center.
 
@@ -249,6 +251,14 @@ States are yours to name. The `category` on each is what makes progress reports 
 hardcoding names — rename `Done` to `Shipped` and the numbers still come out right. Cancelled work
 leaves the denominator entirely, so abandoning an issue does not permanently cap a project below
 100%.
+
+The `$schema` URL is live, so an editor autocompletes and validates the file as you type it:
+
+- [`schema/config.json`](https://codevachon.github.io/motte/schema/config.json) — the project config
+- [`schema/issue.json`](https://codevachon.github.io/motte/schema/issue.json) — an issue's frontmatter
+
+Both are generated from the same zod schemas that validate at runtime, so an editor cannot tell you a
+file is fine when motte would reject it.
 
 ## Agents
 

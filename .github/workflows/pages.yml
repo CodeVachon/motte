@@ -1,0 +1,87 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Deploying needs pages: write, and id-token: write for the OIDC token the deploy action exchanges.
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a newer commit win: this publishes a site, so an older build
+# finishing last would silently roll it back.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+      - run: bun install --frozen-lockfile
+
+      # Builds the page and copies the committed schemas into it, refusing if their $id disagrees with
+      # the URL this deployment serves them at.
+      - run: bun run build:site
+
+      # The reason the site exists. Every `.motte.config.json` motte writes points $schema at these
+      # paths, so an empty or missing file here is a broken promise in every project using the tool.
+      - name: The build must contain the schemas
+        run: |
+          for file in config.json issue.json; do
+            path="apps/site/dist/schema/$file"
+            [ -s "$path" ] || { echo "$path is missing or empty" >&2; exit 1; }
+            diff "schema/$file" "$path"
+          done
+          echo "schemas are present and identical to the committed copies"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # Verifying the artefact rather than the build. A deployment that reports success while the
+      # schema URL 404s is the exact failure this whole issue is about, and only a request to the
+      # live URL can tell the difference.
+      - name: The published schema URL must resolve
+        run: |
+          url="${{ steps.deploy.outputs.page_url }}"
+          url="${url%/}/schema/config.json"
+
+          for attempt in $(seq 1 20); do
+            # Silenced: Pages takes a moment to serve a fresh deployment, which is what the loop is for.
+            if body="$(curl -fsS "$url" 2>/dev/null)"; then
+              # -F because the pattern contains a `$`, which grep may read as an end-of-line anchor
+              # wherever it appears — the pattern then matches nothing and the check passes vacuously.
+              echo "$body" | grep -qF "\"\$id\": \"$url\"" || {
+                echo "$url resolves, but its \$id is not $url" >&2
+                exit 1
+              }
+              echo "$url resolves and identifies itself correctly"
+              exit 0
+            fi
+            sleep 6
+          done
+
+          echo "$url did not resolve within two minutes" >&2
+          exit 1

@@ -36,7 +36,7 @@
     "schemas": "bun run scripts/emit-schemas.ts",
     "build:cli": "bun run build:web && bun build --compile --outfile=bin/motte packages/cli/src/index.ts",
     "build:release": "bun run build:web && bun run scripts/build-release.ts",
-    "build:site": "bun run --cwd apps/site build"
+    "build:site": "bun run --cwd apps/site build && bun run scripts/publish-schemas.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

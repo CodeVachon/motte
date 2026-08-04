@@ -8,9 +8,12 @@ import { join } from "node:path";
  * Prose is not tested — it is prose. What is tested is the install command, because it is the first thing
  * anybody runs and a stale URL on a marketing page is indistinguishable from a broken project, and the
  * schema links, because they are the reason this site exists at all.
+ *
+ * Beside `src/` rather than in `src/pages/`, because Astro renders everything under `pages/` as a route and
+ * tried to prerender this file as a page — which failed the build with a vitest internal-state error.
  */
 
-const ROOT = new URL("../../../..", import.meta.url).pathname;
+const ROOT = new URL("../../..", import.meta.url).pathname;
 
 const page = readFileSync(join(ROOT, "apps/site/src/pages/index.astro"), "utf8");
 const readme = readFileSync(join(ROOT, "ReadMe.md"), "utf8");
