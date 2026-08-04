@@ -1,7 +1,42 @@
 # Changelog
 
-Everything below 1.0 ships as a pre-release. The CLI and the MCP server are usable; the web UI does
-not exist yet.
+Everything below 1.0 ships as a pre-release. The CLI, the MCP server and the web UI all work; what is
+still missing for 1.0 is the documentation site, and the schema URLs that every `.motte.config.json`
+points at.
+
+## 0.4.0
+
+The release that makes `motte serve` mean something. The web interface exists, is embedded in the
+binary, and updates itself when an agent writes to the backlog.
+
+### Added
+
+- **The web interface.** `motte serve` opens a local, read-write UI on `127.0.0.1`: a **board** with
+  columns drawn from the project's own configured states and drag to change state, a **tree** with drag
+  to re-parent, an **issue page** that edits title, description, plan, state, assignee and parent in
+  place and appends notes, and **reports** with progress and per-epic rollups. It is compiled into the
+  binary, so an installed motte serves it with no flags and nothing beside it.
+- **Live updates.** A JSON API over the same core the CLI uses, plus `GET /api/events` as server-sent
+  events fed by a file watcher. Change an issue from the CLI or from an agent and any open tab follows
+  along without a reload — which is the point, since the whole premise is that people and agents share
+  one record.
+- `motte` with no arguments now shows the status report inside a project, or the help outside one.
+
+### Fixed
+
+- `motte` with no arguments printed `✗ null`. `demandCommand` was given an empty message, and yargs
+  passes null to the failure handler when the message is empty.
+- `motte doctor` said "1 issues".
+
+### Notes on the API, if you build against it
+
+- Loopback only, and it checks the `Host` header. Without that check, a page on the internet could point
+  its own hostname at 127.0.0.1 and drive your backlog through your browser — there is no
+  authentication, because it is a local tool reading a local directory.
+- Every write goes through core, so the web UI cannot drift from the CLI or the MCP server, and a change
+  made in the browser lands in the event log under the same name the CLI would use.
+- Response shapes are shared with the CLI's `--json`, with two derived additions: `openBlockers`, and an
+  issue's `children`.
 
 ## 0.3.0
 

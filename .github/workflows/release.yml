@@ -63,6 +63,36 @@ jobs:
           /tmp/motte add "It runs" --json > /dev/null
           /tmp/motte doctor
 
+      # The interface is compiled in, so a release could ship a binary that serves a placeholder and every
+      # other check would still pass. That is the same gap that let an unrun Windows binary ship for two
+      # releases, so it gets a check of its own.
+      - name: The built binary must serve the embedded interface
+        run: |
+          cd "$(mktemp -d)"
+          /tmp/motte init --name served
+          /tmp/motte serve --port 4399 &
+          serve_pid=$!
+          trap 'kill $serve_pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            # Silenced: failing until the server is up is what this loop is for.
+            curl -fsS -o /dev/null "http://127.0.0.1:4399/api/status" 2>/dev/null && break
+            sleep 1
+          done
+
+          page="$(curl -fsS http://127.0.0.1:4399/)"
+          case "$page" in
+            *"not built into this binary"*)
+              echo "the binary is serving the placeholder — the embedding step did not run" >&2
+              exit 1
+              ;;
+          esac
+
+          # The entry document must reference the hashed bundle, and that bundle must be served too.
+          asset="$(printf '%s' "$page" | grep -o '/assets/[^"]*\.js' | head -1)"
+          [ -n "$asset" ] || { echo "no script tag in the served page" >&2; exit 1; }
+          curl -fsS -o /dev/null "http://127.0.0.1:4399$asset"
+          echo "served the embedded interface and $asset"
+
       - name: Verify install.sh against the built assets
         run: |
           python3 -m http.server 8123 --directory dist/release &
@@ -154,6 +184,6 @@ jobs:
             dist/release/*.gz
             dist/release/checksums.txt
           generate_release_notes: true
-          # Everything below 1.0 is a pre-release: the web UI does not exist yet, so the CLI and the MCP
-          # server are usable but the product is not finished.
+          # Everything below 1.0 is a pre-release. The CLI, MCP server and web UI all work; the docs site
+          # and the published schemas the config files point at do not exist yet.
           prerelease: ${{ !startsWith(needs.build.outputs.tag, 'v1.') }}

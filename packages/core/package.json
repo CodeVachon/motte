@@ -1,6 +1,6 @@
 {
   "name": "@motte/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Data layer for motte — on-disk issue format, config, store, and derived views.",
   "type": "module",
