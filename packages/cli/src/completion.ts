@@ -227,18 +227,57 @@ function findRef(refs: IssueRef[], input: string): IssueRef | undefined {
  * Format for the shell. zsh reads `value:description` and renders a description column; bash takes
  * the bare value. Colons in a value have to be escaped or zsh would read them as the separator.
  */
-export function formatCandidates(candidates: Candidate[], zsh: boolean): string[] {
+/**
+ * How a shell wants a candidate and its description on one line.
+ *
+ * `plain` is bash, which shows values only. `zsh` uses `value:description`, which its `_describe` reads.
+ * `tab` is fish and PowerShell, whose completion APIs take a description as a separate field — a tab
+ * because a title may contain anything else, and neither shell's parser splits on tabs itself.
+ */
+export type CandidateStyle = "plain" | "zsh" | "tab";
+
+export function formatCandidates(candidates: Candidate[], style: CandidateStyle): string[] {
     return candidates.map((candidate) => {
-        if (!zsh) return candidate.value;
-        const value = candidate.value.replace(/:/g, "\\:");
-        return candidate.description === undefined
-            ? value
-            : `${value}:${candidate.description.replace(/:/g, " ").replace(/\s+/g, " ")}`;
+        if (style === "plain") return candidate.value;
+
+        const description = candidate.description;
+
+        // Only zsh reads a colon as a separator, so only zsh gets the escape. Escaping unconditionally
+        // meant a label named `type:bug` was offered to fish as `type\:bug` — found by trying it.
+        if (description === undefined) {
+            return style === "tab" ? candidate.value : candidate.value.replace(/:/g, "\\:");
+        }
+
+        // Collapsed last in both branches: replacing colons with spaces first and collapsing after is
+        // what keeps "a: b" from becoming "a  b".
+        if (style === "tab") return `${candidate.value}\t${description.replace(/\s+/g, " ")}`;
+
+        // zsh reads a colon as the separator, so any colon inside either half has to go.
+        return `${candidate.value.replace(/:/g, "\\:")}:${description
+            .replace(/:/g, " ")
+            .replace(/\s+/g, " ")}`;
     });
 }
 
 export function isZshShell(env: NodeJS.ProcessEnv = process.env): boolean {
     return (env.SHELL?.includes("zsh") ?? false) || (env.ZSH_NAME?.includes("zsh") ?? false);
+}
+
+/**
+ * Which format to answer a completion request in.
+ *
+ * The fish and PowerShell scripts say who they are, because there is nothing to sniff: fish sets `SHELL`
+ * to fish only for a login shell, and PowerShell does not set it at all. bash and zsh keep the existing
+ * sniffing, since their scripts come from yargs and cannot be asked to announce themselves.
+ */
+export function candidateStyle(env: NodeJS.ProcessEnv = process.env): CandidateStyle {
+    const declared = env.MOTTE_COMPLETION_SHELL;
+
+    if (declared === "fish" || declared === "powershell") return "tab";
+    if (declared === "zsh") return "zsh";
+    if (declared === "bash") return "plain";
+
+    return isZshShell(env) ? "zsh" : "plain";
 }
 
 /** The flag the shell scripts use to ask for completions. */

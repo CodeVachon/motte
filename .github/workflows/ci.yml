@@ -32,6 +32,87 @@ jobs:
       - name: Validate this repo's own backlog
         run: bun run doctor
 
+      # The completion scripts are only exercised by the shell they are for, and neither of these can be
+      # run on a developer machine by default. This is the whole verification story for both templates.
+      - name: Completion works in a real fish
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq fish
+
+          project="$(mktemp -d)"
+          bun run packages/cli/src/index.ts completion fish > "$project/motte.fish"
+
+          # A `motte` on PATH, because the script calls the command by name.
+          mkdir -p "$project/bin"
+          printf '#!/bin/sh\nexec bun run %s/packages/cli/src/index.ts "$@"\n' "$PWD" > "$project/bin/motte"
+          chmod +x "$project/bin/motte"
+          export PATH="$project/bin:$PATH"
+
+          cd "$project"
+          MOTTE_AUTHOR=CI motte init --name Completion --no-agents > /dev/null
+          MOTTE_AUTHOR=CI motte add "Parser rewrite" -l core > /dev/null
+
+          # The headline feature: an issue completed from a fragment of its title.
+          refs="$(fish -c "source $project/motte.fish; complete -C 'motte show pars'")"
+          case "$refs" in
+            *parser-rewrite*) echo "refs: $refs" ;;
+            *) echo "fish did not complete an issue by title: $refs" >&2; exit 1 ;;
+          esac
+
+          # And a command name, which comes from yargs rather than from motte — it must not arrive as
+          # `renumber:Give a fresh id…`, which is what fish showed before the format was per-request.
+          cmds="$(fish -c "source $project/motte.fish; complete -C 'motte ren'")"
+          case "$cmds" in
+            *renumber:*) echo "fish got a colon-joined command name: $cmds" >&2; exit 1 ;;
+            *renumber*) echo "commands: $cmds" ;;
+            *) echo "fish did not complete a command name: $cmds" >&2; exit 1 ;;
+          esac
+
+      - name: Completion registers in a real PowerShell
+        shell: pwsh
+        run: |
+          $project = Join-Path ([System.IO.Path]::GetTempPath()) 'motte-pwsh-completion'
+          New-Item -ItemType Directory -Path $project -Force | Out-Null
+
+          $script = Join-Path $project 'motte.ps1'
+          bun run packages/cli/src/index.ts completion powershell | Set-Content -Path $script
+
+          # Parses at all — a template with a syntax error would otherwise only fail on a user's machine.
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($script, [ref] $null, [ref] $errors) | Out-Null
+          if ($errors.Count -gt 0) { throw "the completion script does not parse: $($errors[0].Message)" }
+
+          # Registering is the other half: a bad Register-ArgumentCompleter call throws here.
+          . $script
+          Write-Host 'registered the argument completer'
+
+          # A `motte` command for the completer to call, then ask PowerShell itself to complete a line.
+          # An executable with no extension rather than a .ps1: this runs on Linux, where PATHEXT does
+          # not apply and the completer resolves a native command.
+          $bin = Join-Path $project 'bin'
+          New-Item -ItemType Directory -Path $bin -Force | Out-Null
+          $wrapper = Join-Path $bin 'motte'
+          Set-Content -Path $wrapper -Value "#!/bin/sh`nexec bun run $PWD/packages/cli/src/index.ts `"`$@`""
+          & chmod +x $wrapper
+          $env:PATH = "$bin$([System.IO.Path]::PathSeparator)$env:PATH"
+
+          Push-Location $project
+          try {
+              $env:MOTTE_AUTHOR = 'CI'
+              motte init --name Completion --no-agents | Out-Null
+              motte add 'Parser rewrite' | Out-Null
+
+              $line = 'motte show pars'
+              $completions = [System.Management.Automation.CommandCompletion]::CompleteInput(
+                  $line, $line.Length, $null)
+
+              $texts = $completions.CompletionMatches | ForEach-Object { $_.CompletionText }
+              Write-Host "completions: $($texts -join ', ')"
+              if ($texts -notcontains 'parser-rewrite') {
+                  throw 'PowerShell did not complete an issue by title fragment'
+              }
+          }
+          finally { Pop-Location }
+
   # The Windows installer, and the only place the Windows binary is ever executed. Nothing here can be
   # checked on a developer machine: there is no PowerShell on macOS or Linux by default, so this job is
   # the whole verification story for install.ps1.

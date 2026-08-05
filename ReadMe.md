@@ -95,6 +95,31 @@ motte assign schema atlas
 
 An ambiguous fragment errors and lists the candidates rather than guessing.
 
+### Tab completion
+
+```bash
+motte completion fish > ~/.config/fish/completions/motte.fish
+echo 'source ~/.motte/completions/motte.zsh' >> ~/.zshrc      # or motte.bash for bash
+motte completion powershell >> $PROFILE                        # Windows
+```
+
+`install.sh` generates all three scripts into `~/.motte/completions/` with the binary it just installed,
+and switches fish on for you — fish autoloads from a known directory, so that needs no edit to a file you
+own. bash and zsh do need one line, which the installer prints rather than adding.
+
+Completion covers commands and flags, and — reading the project in the current directory — **issues by a
+fragment of their title**, states, assignees and labels:
+
+```
+motte show pars<TAB>     → parser-rewrite     #0003 [Todo]
+motte move 3 <TAB>       → Todo  In Progress  Done
+motte list --label <TAB> → core  web  infra
+```
+
+That last part is the point of the whole reference model: every command takes a title fragment as readily
+as an id, so completion turns "which number was that" into a non-question. Frontmatter is read without
+parsing whole files to keep a keypress under 10ms on a backlog of a few hundred issues.
+
 ### Editing
 
 Pass flags to change one field, or no flags to open the whole issue in `$EDITOR`:

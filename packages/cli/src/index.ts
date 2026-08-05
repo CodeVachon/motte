@@ -13,7 +13,13 @@ import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { renumberCommand } from "./commands/renumber.js";
 import { serveCommand } from "./commands/serve.js";
-import { completionCandidates, formatCandidates, isZshShell, wordsFromArgv } from "./completion.js";
+import {
+    candidateStyle,
+    completionCandidates,
+    formatCandidates,
+    wordsFromArgv
+} from "./completion.js";
+import { COMPLETION_SHELLS, completionScript, isCompletionShell } from "./completionScripts.js";
 import { context } from "./context.js";
 import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
@@ -120,16 +126,20 @@ function defaultAction(showHelp: () => void): void {
     );
 }
 
-export async function run(argv: string[] = hideBin(process.argv)): Promise<void> {
-    // A closed pipe can surface either as a thrown write (handled in `report`) or as a stream error
-    // event, depending on where in the write the reader went away. Both have to be swallowed.
-    for (const stream of [process.stdout, process.stderr]) {
-        stream.on("error", (thrown: unknown) => {
-            if (isBrokenPipe(thrown)) process.exit(0);
-            throw thrown;
-        });
-    }
+/** Put an environment variable back as it was, including having been absent. */
+function restore(name: string, value: string | undefined): void {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+}
 
+/**
+ * The parser, every command registered.
+ *
+ * A function rather than inline in `run` because yargs decides between the bash and zsh completion
+ * templates when the instance is constructed, by reading `SHELL`. Asking for one of them by name means
+ * setting those variables and then building — which needs a second instance.
+ */
+function buildCli(argv: string[]) {
     const cli = yargs(argv)
         .scriptName("motte")
         .usage("$0 <command> [options]")
@@ -161,7 +171,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
         // completionFilter() hands back to yargs' own completion of command and flag names.
         .completion(
             "completion",
-            "Print a shell completion script for bash or zsh",
+            "Print a shell completion script — bash, zsh, fish or powershell",
             (
                 current: string,
                 _argv: unknown,
@@ -182,7 +192,7 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
                     );
 
                     if (candidates !== undefined) {
-                        done(formatCandidates(candidates, isZshShell()));
+                        done(formatCandidates(candidates, candidateStyle()));
                         return;
                     }
                 } catch {
@@ -217,16 +227,99 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
             process.exit(1);
         });
 
-    // The bare command is handled here rather than as a yargs `$0` command. Registering one would make
-    // every unrecognised first word an "unknown argument" instead of an unknown command, which silently
-    // disables `recommendCommands` — `motte stauts` would stop suggesting `status`.
-    if (argv.length === 0) {
-        // "log" rather than the default "error": asking for status outside a project is not a failure.
-        defaultAction(() => cli.showHelp("log"));
+    return cli;
+}
+
+export async function run(argv: string[] = hideBin(process.argv)): Promise<void> {
+    // A closed pipe can surface either as a thrown write (handled in `report`) or as a stream error
+    // event, depending on where in the write the reader went away. Both have to be swallowed.
+    for (const stream of [process.stdout, process.stderr]) {
+        stream.on("error", (thrown: unknown) => {
+            if (isBrokenPipe(thrown)) process.exit(0);
+            throw thrown;
+        });
+    }
+
+    /**
+     * `motte completion <shell>`, for the two shells yargs has no template for.
+     *
+     * Handled before yargs parses, because `.completion()` registers a command that takes no arguments —
+     * it sniffs the environment and prints bash or zsh. Naming a shell outright is the only way to ask for
+     * fish or PowerShell, and it also means an installer or a Dockerfile can generate the right script
+     * without depending on what `SHELL` happens to say.
+     *
+     * `motte completion` with no shell stays yargs' business, unchanged.
+     */
+    if (argv[0] === "completion" && argv[1] !== undefined && !argv[1].startsWith("-")) {
+        if (!isCompletionShell(argv[1])) {
+            process.stderr.write(
+                `${error(`unknown shell "${argv[1]}"`)}\n` +
+                    `${dim(`  Supported: ${COMPLETION_SHELLS.join(", ")}.`)}\n`
+            );
+            process.exitCode = 1;
+            return;
+        }
+
+        const written = completionScript(argv[1]);
+        if (written !== undefined) {
+            process.stdout.write(written);
+            return;
+        }
+
+        // bash and zsh come from yargs, which chooses between them by sniffing. Steering that with the
+        // variables it reads keeps one implementation of those two scripts rather than a second copy —
+        // and they are restored, because the tests drive this in the same process.
+        const previous = { SHELL: process.env.SHELL, ZSH_NAME: process.env.ZSH_NAME };
+        try {
+            process.env.SHELL = argv[1] === "zsh" ? "/bin/zsh" : "/bin/bash";
+            delete process.env.ZSH_NAME;
+            buildCli([]).showCompletionScript();
+        } finally {
+            restore("SHELL", previous.SHELL);
+            restore("ZSH_NAME", previous.ZSH_NAME);
+        }
         return;
     }
 
-    await cli.parseAsync();
+    /**
+     * A completion request from fish or PowerShell must not be answered in zsh's dialect.
+     *
+     * yargs formats its own command and flag completions as `name:description` when it thinks the shell is
+     * zsh, and both of those shells split a candidate on a tab — so the pair arrives as one literal word
+     * and `motte ren<TAB>` inserted `renumber:Give a fresh id…`. Found by running it in real fish.
+     *
+     * It decides by reading SHELL when the instance is constructed, so the fix is to construct it in an
+     * environment describing where the request actually came from. The cost is bare command names there,
+     * with no descriptions; the candidates motte generates itself keep theirs.
+     */
+    const speaksTabs = candidateStyle() === "tab";
+    const previousShell = { SHELL: process.env.SHELL, ZSH_NAME: process.env.ZSH_NAME };
+
+    if (speaksTabs) {
+        delete process.env.SHELL;
+        delete process.env.ZSH_NAME;
+    }
+
+    try {
+        const cli = buildCli(argv);
+
+        // The bare command is handled here rather than as a yargs `$0` command. Registering one would make
+        // every unrecognised first word an "unknown argument" instead of an unknown command, which silently
+        // disables `recommendCommands` — `motte stauts` would stop suggesting `status`.
+        if (argv.length === 0) {
+            // "log" rather than the default "error": asking for status outside a project is not a failure.
+            defaultAction(() => cli.showHelp("log"));
+            return;
+        }
+
+        await cli.parseAsync();
+    } finally {
+        // Restored because the tests drive this in one long-lived process.
+        if (speaksTabs) {
+            restore("SHELL", previousShell.SHELL);
+            restore("ZSH_NAME", previousShell.ZSH_NAME);
+        }
+    }
 }
 
 /**

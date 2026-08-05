@@ -7,6 +7,7 @@
 #   %USERPROFILE%\.motte\versions\v<X.Y.Z>\bin\motte.exe   the binary
 #   %USERPROFILE%\.motte\current                           junction to the active version
 #   the user PATH gains %USERPROFILE%\.motte\current\bin
+#   %USERPROFILE%\.motte\completions\motte.ps1            generated completion script
 #
 # Environment:
 #   MOTTE_VERSION         install a specific version (default: latest release)
@@ -221,6 +222,39 @@ function Add-ToUserPath {
     return $true
 }
 
+<#
+.SYNOPSIS
+    Generate the PowerShell completion script.
+.DESCRIPTION
+    Generated with the binary just installed rather than shipped as a static file, so the completions
+    always describe the version present.
+
+    Written, not enabled: switching it on means adding a line to the user's $PROFILE, and this installer
+    does not edit files the user owns — the same reason install.sh only auto-enables fish, whose autoload
+    directory needs no such edit.
+#>
+function Install-Completion {
+    param([string] $Exe)
+
+    $completionDir = Join-Path $InstallDir 'completions'
+    $script = Join-Path $completionDir 'motte.ps1'
+
+    try {
+        New-Item -ItemType Directory -Path $completionDir -Force | Out-Null
+        & $Exe completion powershell | Set-Content -Path $script -Encoding UTF8
+
+        if (-not (Test-Path $script)) { return }
+
+        Write-Host ''
+        Write-Info 'Tab completion — completes commands, flags, and issues by title fragment:'
+        Write-Info "  Add-Content `$PROFILE `". '$script'`""
+    }
+    catch {
+        # An older or broken binary must not fail an otherwise good install.
+        Write-Info 'Completion script could not be generated; `motte completion powershell` prints it.'
+    }
+}
+
 function Install-Motte {
     $target = Get-MotteTarget
 
@@ -271,6 +305,8 @@ function Install-Motte {
     }
 
     Write-Ok "motte $installed installed to $versionDir"
+
+    Install-Completion (Join-Path (Join-Path $versionDir 'bin') 'motte.exe')
 
     $pathEntry = Join-Path (Join-Path $InstallDir 'current') 'bin'
     if ([string]::IsNullOrWhiteSpace((Get-MotteEnv 'MOTTE_NO_MODIFY_PATH'))) {

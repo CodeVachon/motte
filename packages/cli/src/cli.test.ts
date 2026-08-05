@@ -750,3 +750,113 @@ describe("renumber", RETRY, () => {
         expect(run.stdout).toMatch(/no duplicate ids/);
     });
 });
+
+/**
+ * `motte completion <shell>`.
+ *
+ * bash and zsh come from yargs, which picks between them by reading SHELL; fish and PowerShell are motte's
+ * own templates. Naming the shell is the only way to ask for the latter two, and it also means an installer
+ * can generate the right script without depending on what SHELL happens to say.
+ */
+describe("completion", RETRY, () => {
+    it("prints the fish script", async () => {
+        const run = await motte(project(), ["completion", "fish"]);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toContain("complete -c motte");
+        expect(run.stdout).toContain("MOTTE_COMPLETION_SHELL=fish");
+    });
+
+    it("prints the PowerShell script", async () => {
+        const run = await motte(project(), ["completion", "powershell"]);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toContain("Register-ArgumentCompleter");
+    });
+
+    /** The point of naming them: the answer must not depend on the shell that happens to be running. */
+    it("gives bash the bash script and zsh the zsh one, whatever SHELL says", async () => {
+        const root = project();
+
+        const asBash = await motte(root, ["completion", "bash"], { SHELL: "/bin/zsh" });
+        const asZsh = await motte(root, ["completion", "zsh"], { SHELL: "/bin/bash" });
+
+        expect(asBash.stdout).not.toContain("#compdef");
+        expect(asZsh.stdout).toContain("#compdef motte");
+        expect(asBash.stdout).toContain("###-begin-motte-completions-###");
+    });
+
+    it("puts SHELL back, since steering yargs meant changing it", async () => {
+        const root = project();
+        const before = process.env.SHELL;
+
+        await motte(root, ["completion", "bash"], { SHELL: "/bin/zsh" });
+
+        expect(process.env.SHELL).toBe(before);
+    });
+
+    it("refuses a shell it has no template for, naming the ones it has", async () => {
+        const run = await motte(project(), ["completion", "nushell"]);
+
+        expect(run.code).toBe(1);
+        expect(run.stderr).toMatch(/unknown shell/);
+        expect(run.stderr).toMatch(/bash, zsh, fish, powershell/);
+    });
+
+    /**
+     * Spawned, because yargs' own completion command calls `process.exit(0)` when it has printed. The
+     * in-process runner turns that into a thrown signal, which `main` then reports as a failure — so this
+     * is one of the few things that needs a real exit status to observe.
+     */
+    it("still prints a script with no shell named, which is what yargs registered", () => {
+        const run = spawnMotte(project(), ["completion"]);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toContain("###-begin-motte-completions-###");
+    });
+
+    /**
+     * The candidate format has to follow the shell that asked, not the one motte is running under. fish
+     * splits on a tab; a colon-joined pair arrives as one literal word.
+     */
+    describe("the candidate format", () => {
+        /**
+         * Spawned, and it has to be: the completion hook reads the raw `process.argv` rather than yargs'
+         * parsed argv, because a parsed argv has already swallowed the flag being completed. In-process
+         * there is no such argv to read, so the request would fall through to yargs' flag completion.
+         */
+        function candidates(root: string, words: string[], env: Record<string, string>): string {
+            return spawnMotte(root, ["--get-yargs-completions", "motte", ...words], env).stdout;
+        }
+
+        it("uses tabs for fish and colons for zsh", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "Parser rewrite"]);
+
+            const asFish = candidates(root, ["show", ""], { MOTTE_COMPLETION_SHELL: "fish" });
+            const asZsh = candidates(root, ["show", ""], { SHELL: "/bin/zsh" });
+
+            // Same candidate, different separator: fish reads a tab, zsh reads a colon.
+            expect(asFish).toMatch(/^1\tParser rewrite/m);
+            expect(asZsh).toMatch(/^1:Parser rewrite/m);
+            expect(asFish).not.toMatch(/^1:/m);
+        });
+
+        /**
+         * yargs formats its own command names as `name:description` for zsh. fish would insert that whole
+         * string, so a request declaring fish must not get it — `motte ren<TAB>` gave
+         * `renumber:Give a fresh id…` until this was handled.
+         */
+        it("does not hand fish a colon-joined command name", async () => {
+            const root = await initialised();
+
+            const replies = candidates(root, ["ren"], {
+                MOTTE_COMPLETION_SHELL: "fish",
+                SHELL: "/bin/zsh"
+            });
+
+            expect(replies).toContain("renumber");
+            expect(replies).not.toContain("renumber:");
+        });
+    });
+});

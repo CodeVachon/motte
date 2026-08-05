@@ -1,10 +1,10 @@
 ---
 id: 46
 title: Shell completion
-state: Todo
+state: Done
 labels: [cli, dx]
 created: 2026-07-29T18:50:42Z
-updated: 2026-08-04T17:36:23Z
+updated: 2026-08-05T13:59:51Z
 ---
 
 ## Description
@@ -32,3 +32,11 @@ At 2,000 issues a completion round trip lands near 150ms and begins to drag. Tha
 ### 2026-08-04T17:36:23Z — claude (agent)
 
 Status check: bash and zsh completion is done and working — `motte completion` emits the script, dynamic sources landed in #0048, and the latency prerequisite in #0047. What keeps this open is #0049, the fish and PowerShell templates yargs does not provide, plus wiring the script into install.sh and removing it in uninstall. Worth knowing before anyone picks this up expecting to start from nothing.
+
+### 2026-08-05T13:59:51Z — claude (agent)
+
+Complete. #0047 gave the frontmatter-only reader, #0048 the dynamic sources, #0049 the fish and PowerShell templates, and plan step 5 is done here: install.sh generates all three unix scripts with the binary it just installed, switches fish on by copying into fish's autoload directory — the one shell where enabling needs no edit to a file the user owns — and prints the one line bash and zsh need. install.ps1 does the same for PowerShell, written but not enabled, since switching that on means editing $PROFILE.
+
+motte uninstall removes the fish script, and only when it is the script motte generates: a hand-written motte.fish is left alone and reported. Everything else lives under the install root and goes with it. Verified both branches against a real managed install.
+
+The completion scripts are not version-specific — they only call motte --get-yargs-completions — so an upgrade does not need to regenerate them.

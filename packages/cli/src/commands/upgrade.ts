@@ -13,6 +13,7 @@ import {
 } from "../install/layout.js";
 import { resolveLatestVersion } from "../install/releases.js";
 import { forgetRecord, readRecord, unwire } from "../install/record.js";
+import { fishCompletionPath, removeFishCompletion } from "../install/completions.js";
 import { emitJson } from "../context.js";
 import { dim, ok, warn } from "../ui/format.js";
 
@@ -263,6 +264,9 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
 
         const install = requireInstall();
         const binLinks = candidateBinLinks(install.root);
+        // The one file outside the install root: install.sh puts the fish script where fish autoloads it.
+        const fishScript = fishCompletionPath();
+        const hasFishScript = existsSync(fishScript);
 
         if (args.yes !== true) {
             process.stdout.write(
@@ -274,6 +278,7 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
                                 `${dim(`  and motte's entry in ${entry.path ?? entry.agent}`)}\n`
                         )
                         .join("") +
+                    (hasFishScript ? `${dim(`  and ${fishScript}`)}\n` : "") +
                     `\n${dim("Your projects' .motte/ backlogs are untouched — only the installation is removed.")}\n` +
                     `${dim("Re-run with --yes to proceed.")}\n`
             );
@@ -286,9 +291,16 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
         for (const link of binLinks) rmSync(link, { force: true });
         rmSync(install.root, { recursive: true, force: true });
 
+        // Everything else generated lives under the root and has just gone with it.
+        const completion = removeFishCompletion();
+
         if (args.json === true) {
             emitJson({
-                removed: [install.root, ...binLinks],
+                removed: [
+                    install.root,
+                    ...binLinks,
+                    ...(completion.result === "removed" ? [completion.path] : [])
+                ],
                 unwired: unwired.map((o) => ({ ...o.entry, result: o.result }))
             });
             return;
@@ -297,6 +309,10 @@ export const uninstallCommand: CommandModule<{}, UninstallArgs> = {
         process.stdout.write(
             `${ok(`removed ${install.root}`)}\n` +
                 binLinks.map((link) => `${ok(`removed ${link}`)}\n`).join("") +
+                (completion.result === "removed" ? `${ok(`removed ${completion.path}`)}\n` : "") +
+                (completion.result === "not-ours"
+                    ? `${warn(`left ${completion.path} alone — it is not the script motte generates`)}\n`
+                    : "") +
                 `\n${dim("Project backlogs under .motte/ were not touched.")}\n`
         );
     }

@@ -8,6 +8,7 @@
 #   ~/.motte/versions/v<X.Y.Z>/bin/motte   the binary
 #   ~/.motte/current -> versions/v<X.Y.Z>  the active version
 #   ~/.local/bin/motte -> current/bin/motte  what lands on PATH
+#   ~/.motte/completions/                    generated completion scripts
 #
 # Environment:
 #   MOTTE_VERSION      install a specific version (default: latest release)
@@ -159,6 +160,43 @@ verify() {
     [ "$expected" = "$actual" ] || die "checksum mismatch for $2\n  expected $expected\n  actual   $actual"
 }
 
+# --- shell completion --------------------------------------------------------
+
+# Generated with the binary that was just installed, rather than shipped as a static file, so the
+# completions always describe the version present.
+#
+# Only fish is switched on automatically, because fish autoloads a file from a known directory and that
+# needs no edit to anything the user owns. bash and zsh have no such directory — enabling them means
+# adding a line to a profile, and this installer's whole stance is that it does not touch your shell.
+install_completions() {
+    motte_bin="$1"
+    comp_dir="$INSTALL_DIR/completions"
+
+    mkdir -p "$comp_dir" || return 0
+
+    for shell in bash zsh fish; do
+        "$motte_bin" completion "$shell" > "$comp_dir/motte.$shell" 2>/dev/null || {
+            # An older or broken binary must not fail an otherwise good install.
+            rm -f "$comp_dir/motte.$shell"
+            continue
+        }
+    done
+
+    fish_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+    if [ -d "$fish_dir" ] && [ -f "$comp_dir/motte.fish" ]; then
+        if cp "$comp_dir/motte.fish" "$fish_dir/motte.fish" 2>/dev/null; then
+            ok "fish completion installed to $fish_dir/motte.fish"
+        fi
+    fi
+
+    if [ -f "$comp_dir/motte.bash" ]; then
+        say ""
+        say "${BOLD}Tab completion${RESET} — completes commands, flags, and issues by title fragment:"
+        say "  bash:  echo 'source \"$comp_dir/motte.bash\"' >> ~/.bashrc"
+        say "  zsh:   echo 'source \"$comp_dir/motte.zsh\"' >> ~/.zshrc"
+    fi
+}
+
 # --- install -----------------------------------------------------------------
 
 main() {
@@ -211,6 +249,8 @@ main() {
 
     ok "motte $installed installed to $version_dir"
     ok "linked $BIN_DIR/motte"
+
+    install_completions "$version_dir/bin/motte"
 
     if [ -z "${MOTTE_NO_MODIFY_PATH:-}" ]; then
         case ":$PATH:" in

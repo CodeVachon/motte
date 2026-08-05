@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Config, IssueRef, State } from "@motte/core";
 import {
+    candidateStyle,
     completionCandidates,
     expectedAt,
     formatCandidates,
@@ -231,30 +232,97 @@ describe("deferring to yargs", () => {
 });
 
 describe("formatCandidates", () => {
-    it("emits bare values for bash", () => {
-        expect(formatCandidates([{ value: "7", description: "A title" }], false)).toEqual(["7"]);
+    it("emits bare values for bash, which shows no descriptions", () => {
+        expect(formatCandidates([{ value: "7", description: "A title" }], "plain")).toEqual(["7"]);
     });
 
-    it("emits value:description for zsh", () => {
-        expect(formatCandidates([{ value: "7", description: "A title" }], true)).toEqual([
-            "7:A title"
-        ]);
+    describe("zsh", () => {
+        it("emits value:description, which is what _describe reads", () => {
+            expect(formatCandidates([{ value: "7", description: "A title" }], "zsh")).toEqual([
+                "7:A title"
+            ]);
+        });
+
+        it("omits the separator when there is no description", () => {
+            expect(formatCandidates([{ value: "7" }], "zsh")).toEqual(["7"]);
+        });
+
+        it("escapes a colon in the value, since zsh reads it as the separator", () => {
+            expect(formatCandidates([{ value: "a:b", description: "d" }], "zsh")).toEqual([
+                "a\\:b:d"
+            ]);
+        });
+
+        it("strips colons out of the description so it cannot be misread", () => {
+            expect(formatCandidates([{ value: "7", description: "a: b" }], "zsh")).toEqual([
+                "7:a b"
+            ]);
+        });
+
+        it("collapses newlines in a description onto one line", () => {
+            expect(formatCandidates([{ value: "7", description: "a\nb" }], "zsh")).toEqual([
+                "7:a b"
+            ]);
+        });
     });
 
-    it("omits the separator when there is no description", () => {
-        expect(formatCandidates([{ value: "7" }], true)).toEqual(["7"]);
+    describe("fish and PowerShell", () => {
+        it("separates the description with a tab", () => {
+            expect(formatCandidates([{ value: "7", description: "A title" }], "tab")).toEqual([
+                "7\tA title"
+            ]);
+        });
+
+        /** A colon is ordinary text here — only zsh reads it as a separator. */
+        it("leaves colons alone in both halves", () => {
+            expect(formatCandidates([{ value: "a:b", description: "c: d" }], "tab")).toEqual([
+                "a:b\tc: d"
+            ]);
+        });
+
+        it("emits the value alone when there is no description", () => {
+            expect(formatCandidates([{ value: "7" }], "tab")).toEqual(["7"]);
+        });
+
+        /** A label named `type:bug` was offered to fish as `type\:bug` until this was pinned down. */
+        it("does not escape a colon in a value that has no description", () => {
+            expect(formatCandidates([{ value: "type:bug" }], "tab")).toEqual(["type:bug"]);
+            // zsh still needs it, since that is where the colon means something.
+            expect(formatCandidates([{ value: "type:bug" }], "zsh")).toEqual(["type\\:bug"]);
+        });
+
+        /** A tab inside a description would look like a second field, so newlines and tabs collapse. */
+        it("collapses whitespace so one candidate stays one field pair", () => {
+            expect(formatCandidates([{ value: "7", description: "a\tb\nc" }], "tab")).toEqual([
+                "7\ta b c"
+            ]);
+        });
+    });
+});
+
+describe("candidateStyle", () => {
+    /**
+     * fish and PowerShell announce themselves, because there is nothing to sniff: fish only sets `SHELL`
+     * for a login shell and PowerShell does not set it at all.
+     */
+    it("believes what the script declares", () => {
+        expect(candidateStyle({ MOTTE_COMPLETION_SHELL: "fish" })).toBe("tab");
+        expect(candidateStyle({ MOTTE_COMPLETION_SHELL: "powershell" })).toBe("tab");
+        expect(candidateStyle({ MOTTE_COMPLETION_SHELL: "zsh" })).toBe("zsh");
+        expect(candidateStyle({ MOTTE_COMPLETION_SHELL: "bash" })).toBe("plain");
     });
 
-    it("escapes a colon in the value, since zsh reads it as the separator", () => {
-        expect(formatCandidates([{ value: "a:b", description: "d" }], true)).toEqual(["a\\:b:d"]);
+    it("falls back to sniffing for the yargs-generated scripts", () => {
+        expect(candidateStyle({ SHELL: "/bin/zsh" })).toBe("zsh");
+        expect(candidateStyle({ ZSH_NAME: "zsh" })).toBe("zsh");
+        expect(candidateStyle({ SHELL: "/bin/bash" })).toBe("plain");
+        expect(candidateStyle({})).toBe("plain");
     });
 
-    it("strips colons out of the description so it cannot be misread", () => {
-        expect(formatCandidates([{ value: "7", description: "a: b" }], true)).toEqual(["7:a b"]);
-    });
-
-    it("collapses newlines in a description onto one line", () => {
-        expect(formatCandidates([{ value: "7", description: "a\nb" }], true)).toEqual(["7:a b"]);
+    it("ignores a declaration it does not recognise rather than guessing", () => {
+        expect(candidateStyle({ MOTTE_COMPLETION_SHELL: "nushell", SHELL: "/bin/zsh" })).toBe(
+            "zsh"
+        );
     });
 });
 
