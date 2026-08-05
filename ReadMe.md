@@ -322,6 +322,36 @@ exactly motte's part of it.
 It writes `Refs: #0042` rather than a bare `#0042` for a reason worth knowing: git strips lines starting with
 `#` from a commit message, so the bare form would silently vanish from an interactive commit.
 
+### Duplicates
+
+Two agents read the same backlog, neither sees the other's create, and the same work exists twice under
+two numbers. `motte merge` folds one into the other:
+
+```bash
+motte merge 90 42 --dry-run   # what would move
+motte merge 90 42
+```
+
+Nothing is thrown away. The notes, children, blockers and labels move to the survivor, and the
+duplicate's own description and plan are kept as a note on it — "these two are the same issue" is a
+judgement about the work, not permission to delete somebody's writing. The survivor's state and assignee
+are left alone, and it inherits the duplicate's parent only if it did not already have one.
+
+Closing a duplicate as Done would be the obvious alternative, and it is wrong: every report would then
+count it as work that got finished.
+
+The number that went leaves a tombstone, so it still leads somewhere:
+
+```bash
+motte show 90    # ! #0090 was merged into #0042 — then shows #0042
+```
+
+Only `show` follows it. `motte move 90 done` still refuses, because acting on the wrong issue is worse
+than being told a number is gone.
+
+Merging a parent into its own child — or the reverse, at any depth — is refused rather than guessed at;
+move the children out first if that is really what you meant.
+
 ### Pruning old work
 
 ```bash
@@ -458,6 +488,10 @@ The server tells agents to start with **`ready_issues`** rather than listing eve
 with every blocker settled, which is the question an agent actually has at the start of a session. And
 **`breakdown`** splits an issue into children in one call, expressing the ordering between them at the
 same time, so decomposing an epic is one round trip rather than a dozen.
+
+**`merge_issues`** is there for the same reason agents are: they are how duplicates get filed in the
+first place. Unlike `prune`, which stays CLI-only, it destroys nothing, so an agent reaching for it
+cannot lose anybody's writing.
 
 Notes written through MCP are recorded as authored by the agent; notes written through the CLI are
 recorded as authored by the git user. Both land in the same file — that is what makes the record

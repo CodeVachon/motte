@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs";
 import {
     commitsFor,
+    padId,
     eventsFor,
     timeInState,
     type Config,
@@ -88,6 +89,8 @@ function describeEvent(event: Event): string {
             return `pruned (recoverable from ${event.commit})`;
         case "restored":
             return `restored from ${event.commit}`;
+        case "merged":
+            return `merged into #${padId(event.into)}`;
     }
 }
 

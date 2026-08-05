@@ -69,6 +69,8 @@ export function describeChange(config: Config, change: Change): string {
                     return `pruned  ${dim(change.event.title)}`;
                 case "restored":
                     return `restored  ${dim(change.title)}`;
+                case "merged":
+                    return `merged into #${padId(change.event.into)}  ${dim(change.event.title)}`;
             }
     }
 }

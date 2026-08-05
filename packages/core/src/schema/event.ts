@@ -56,7 +56,20 @@ export const EventSchema = z.discriminatedUnion("type", [
         path: z.string(),
         commit: z.string()
     }),
-    z.object({ ...BaseEvent, type: z.literal("restored"), commit: z.string() })
+    z.object({ ...BaseEvent, type: z.literal("restored"), commit: z.string() }),
+    /**
+     * Written by `motte merge`. The `id` is the issue that went; `into` is the survivor.
+     *
+     * A tombstone rather than nothing, so a reference to the old number in a commit message or somebody's
+     * memory still leads somewhere — `motte show` on a merged id follows this to the issue that has the
+     * work.
+     */
+    z.object({
+        ...BaseEvent,
+        type: z.literal("merged"),
+        into: z.number().int().positive(),
+        title: z.string()
+    })
 ]);
 
 export type Event = z.infer<typeof EventSchema>;

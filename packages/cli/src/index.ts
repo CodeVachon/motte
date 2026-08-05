@@ -8,7 +8,10 @@ import {
     CycleError,
     DependencyCycleError,
     IssueNotFoundError,
-    IssueParseError
+    IssueParseError,
+    mergedInto,
+    MergeError,
+    padId
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { claimCommand, releaseCommand } from "./commands/claim.js";
@@ -33,6 +36,7 @@ import { mcpCommand } from "./commands/mcp.js";
 import { nextCommand } from "./commands/next.js";
 import { listCommand } from "./commands/list.js";
 import { logCommand } from "./commands/log.js";
+import { mergeCommand } from "./commands/merge.js";
 import { PruneError, pruneCommand, restoreCommand } from "./commands/prune.js";
 import {
     addCommand,
@@ -65,7 +69,8 @@ const EXPECTED_ERRORS = [
     DependencyCycleError,
     EditorError,
     IssueNotFoundError,
-    IssueParseError
+    IssueParseError,
+    MergeError
 ];
 
 /**
@@ -80,11 +85,42 @@ function isBrokenPipe(thrown: unknown): boolean {
     );
 }
 
+/**
+ * Where a number went, added to the refusal that it no longer exists.
+ *
+ * Only `show` follows a tombstone — acting on the wrong issue is worse than being told a number is gone —
+ * but refusing without saying anything wastes the tombstone. `motte move 90 done` still fails; it now says
+ * that #0090 was merged into #0042, which is what the person needed to know.
+ *
+ * Everything here is best effort. This runs while already reporting a failure, and a hint that cannot be
+ * looked up must not replace the error the user was going to see.
+ */
+function mergeHint(thrown: unknown): string {
+    if (!(thrown instanceof IssueNotFoundError)) return "";
+
+    const asked = /#?(\d+)/.exec(thrown.message);
+    if (asked?.[1] === undefined) return "";
+
+    try {
+        const { store } = context();
+        const tombstone = mergedInto(store.events().events, Number(asked[1]));
+        if (tombstone === undefined) return "";
+
+        // Only if the survivor is actually there: a merge followed by a prune leads nowhere, and pointing
+        // at a second missing number would be worse than saying nothing.
+        if (!store.all().some((issue) => issue.id === tombstone.into)) return "";
+
+        return `\n${dim(`  #${padId(Number(asked[1]))} was merged into #${padId(tombstone.into)} — try that.`)}`;
+    } catch {
+        return "";
+    }
+}
+
 function report(thrown: unknown): never {
     if (isBrokenPipe(thrown)) process.exit(0);
 
     if (EXPECTED_ERRORS.some((type) => thrown instanceof type)) {
-        process.stderr.write(`${error((thrown as Error).message)}\n`);
+        process.stderr.write(`${error((thrown as Error).message)}${mergeHint(thrown)}\n`);
         process.exit(1);
     }
 
@@ -171,6 +207,7 @@ function buildCli(argv: string[]) {
         .command(statusCommand)
         .command(treeCommand)
         .command(logCommand)
+        .command(mergeCommand)
         .command(pruneCommand)
         .command(restoreCommand)
         .command(doctorCommand)

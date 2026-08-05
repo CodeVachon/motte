@@ -20,6 +20,7 @@ import {
     type ReadResult
 } from "./events.js";
 import { readIssueRef, type IssueRef } from "./frontmatter.js";
+import { mergedBody, planMerge, type MergePlan } from "./merge.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
 import { issueFilename, padId, slugify } from "./slug.js";
 import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
@@ -645,6 +646,96 @@ export class IssueStore {
         return written;
     }
 
+    /** What `merge` would do, without doing it. Throws the same refusals. */
+    planMerge(fromId: number, intoId: number): MergePlan {
+        return planMerge(this.all(), fromId, intoId);
+    }
+
+    /**
+     * Fold one issue into another: the survivor gets everything, the source becomes a tombstone.
+     *
+     * The order is deliberate. The survivor is written first, then the relations that pointed at the source
+     * are moved, and only then is the source's file removed. An interruption anywhere in that sequence
+     * leaves the work duplicated rather than lost, which is the failure that can be fixed by hand.
+     *
+     * State and assignee are left alone. Which of two duplicates is being worked on, and by whom, is a
+     * judgement the caller can already express with `claim` and `move`; a merge silently starting an issue
+     * because its duplicate had been started would be a decision made in the wrong place.
+     */
+    merge(fromId: number, intoId: number, author: AuthorOptions | Author = {}): Issue {
+        const plan = this.planMerge(fromId, intoId);
+        const { from, into } = plan;
+
+        const marker = this.noteFrom(mergedBody(from), author);
+
+        // Merged by date rather than appended in a block, so the survivor's note stream still reads in the
+        // order things were written. Each note keeps its own author and timestamp, so nothing about where
+        // it came from is lost — and the marker note says how many arrived.
+        const notes = [...into.notes, ...from.notes].sort((a, b) => a.at.localeCompare(b.at));
+
+        const survivor: Issue = {
+            ...into,
+            ...(plan.parent === undefined ? {} : { parent: plan.parent }),
+            ...(plan.labels.length > 0 ? { labels: [...(into.labels ?? []), ...plan.labels] } : {}),
+            notes: [...notes, marker],
+            updated: marker.at
+        };
+
+        if (plan.blockedByAfter.length > 0) survivor.blockedBy = plan.blockedByAfter;
+        else delete survivor.blockedBy;
+
+        const written = this.write(survivor, issueFilename(survivor.id, survivor.title));
+
+        for (const child of plan.children) this.setParent(child.id, intoId);
+
+        for (const dependent of plan.dependents) {
+            const blockedBy = (dependent.blockedBy ?? []).filter((blocker) => blocker !== fromId);
+            this.update(dependent.id, {
+                blockedBy: blockedBy.includes(intoId) ? blockedBy : [...blockedBy, intoId]
+            });
+        }
+
+        // Last, and with the tombstone written before the file goes: an id that leads nowhere is worse than
+        // one that leads to a file which is still there.
+        this.tombstone(from, intoId, author);
+        this.remove(fromId);
+
+        // Re-read: the child and dependent writes above may have touched rows this one does not hold.
+        return this.all().find((issue) => issue.id === written.id) ?? written;
+    }
+
+    /** The `merged` event, so the source's number still leads somewhere. */
+    private tombstone(from: Issue, into: number, author: AuthorOptions | Author): void {
+        if (!this.config.events.enabled) return;
+
+        // The store's own author wins over a lookup when the caller said nothing, matching `record`: the
+        // MCP server sets it once at construction rather than passing it to every call.
+        const resolved =
+            Object.keys(author).length === 0
+                ? (this.author ?? resolveAuthor({ cwd: this.config.root }))
+                : this.authorOf(author);
+
+        try {
+            appendEvents(
+                eventsDir(this.config.root),
+                [
+                    {
+                        at: timestamp(),
+                        by: resolved.name,
+                        as: resolved.type,
+                        id: from.id,
+                        type: "merged",
+                        into,
+                        title: from.title
+                    }
+                ],
+                resolved
+            );
+        } catch {
+            // Best effort, as everywhere else the log is written: the merge itself has succeeded.
+        }
+    }
+
     /** Remove an issue's file. Children are left in place and reported as orphans by `doctor`. */
     remove(id: number): void {
         const issue = this.require(id);
@@ -657,27 +748,26 @@ export class IssueStore {
     // --------------------------------------------------------------- internals
 
     /**
-     * A note, with its author resolved.
+     * Who to record, however the caller identified themselves.
      *
-     * Shared because it was not: `renumberFile` arrived with its own copy of the same nine lines, which
-     * fallow caught as a clone group in the file it was added to. An already-resolved `Author` is passed
-     * straight through — that is how the MCP server attributes a note to the agent rather than to the git
-     * user — and anything else goes through `resolveAuthor`.
+     * Shared because it was not: `renumberFile` arrived with its own copy of the same lines, which fallow
+     * caught as a clone group, and `merge`'s tombstone would have made a fourth. An already-resolved
+     * `Author` is passed straight through — that is how the MCP server attributes work to the agent rather
+     * than to the git user — and anything else goes through `resolveAuthor`.
      */
-    /** The name to record for a caller, however they identified themselves. */
-    private nameOf(author: AuthorOptions | Author): string {
+    private authorOf(author: AuthorOptions | Author): Author {
         return "type" in author && "name" in author && typeof author.name === "string"
-            ? author.name
-            : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root }).name;
+            ? (author as Author)
+            : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
+    }
+
+    /** The name alone, for the fields that store a name rather than an author. */
+    private nameOf(author: AuthorOptions | Author): string {
+        return this.authorOf(author).name;
     }
 
     private noteFrom(body: string, author: AuthorOptions | Author): Note {
-        const resolved: Author =
-            "type" in author && "name" in author && typeof author.name === "string"
-                ? (author as Author)
-                : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
-
-        return { at: timestamp(), author: resolved, body: body.trim() };
+        return { at: timestamp(), author: this.authorOf(author), body: body.trim() };
     }
 
     private assertNoDependencyCycle(id: number, blockedBy: number[]): void {

@@ -647,6 +647,7 @@ describe("wiring", RETRY, () => {
             "status",
             "tree",
             "log",
+            "merge",
             "prune",
             "restore",
             "serve",

@@ -32,6 +32,10 @@ Use breakdown to split a large issue into children, rather than creating them on
 If you discover that one issue depends on another, record it with set_blockers rather than describing
 it in prose. Prose is not queryable, and ready_issues is what the next agent reads.
 
+If you find that two issues are the same work filed twice — which happens, because you and another agent
+cannot see each other's creates — use merge_issues rather than closing one as done. Closing it would count
+a duplicate as work that got finished, and every report would be wrong from then on.
+
 Notes you write are attributed to you as an agent. Notes written by a person through the CLI are
 attributed to them. Both land in the same file.`;
 

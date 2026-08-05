@@ -976,4 +976,132 @@ describe("IssueStore", () => {
             });
         });
     });
+
+    /**
+     * Merging, against real files.
+     *
+     * The plan is tested in `merge.test.ts`; what matters here is that everything the plan promised
+     * actually lands on disk, and that the source's file is gone afterwards rather than left as a second
+     * copy of the same work.
+     */
+    describe("merge", () => {
+        it("moves the notes, keeping each one's own author and date", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice" });
+
+            store.addNote(keeper.id, "from the keeper", { name: "chris", type: "user" });
+            store.addNote(dupe.id, "from the duplicate", { name: "atlas", type: "agent" });
+
+            const merged = store.merge(dupe.id, keeper.id, { name: "claude", type: "agent" });
+            const bodies = merged.notes.map((note) => note.body);
+
+            expect(bodies).toContain("from the keeper");
+            expect(bodies).toContain("from the duplicate");
+            expect(merged.notes.find((note) => note.body === "from the duplicate")?.author).toEqual(
+                { name: "atlas", type: "agent" }
+            );
+            // In date order, which is how a note stream is read.
+            expect([...merged.notes].sort((a, b) => a.at.localeCompare(b.at))).toEqual(
+                merged.notes
+            );
+        });
+
+        it("keeps the duplicate's description and plan as a note, so nothing is lost", () => {
+            const keeper = store.create({ title: "The real one", description: "Keeper's why" });
+            const dupe = store.create({
+                title: "Filed twice",
+                description: "The duplicate's why",
+                plan: "1. Something nobody else wrote down"
+            });
+
+            const merged = store.merge(dupe.id, keeper.id);
+
+            expect(merged.description).toBe("Keeper's why");
+            const marker = merged.notes.at(-1)?.body ?? "";
+            expect(marker).toContain("The duplicate's why");
+            expect(marker).toContain("1. Something nobody else wrote down");
+        });
+
+        it("re-parents the duplicate's children and rewrites what waited on it", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice" });
+            const child = store.create({ title: "Child", parent: dupe.id });
+            const waiting = store.create({ title: "Waiting", blockedBy: [dupe.id] });
+
+            store.merge(dupe.id, keeper.id);
+
+            expect(store.require(child.id).parent).toBe(keeper.id);
+            expect(store.require(waiting.id).blockedBy).toEqual([keeper.id]);
+        });
+
+        it("takes the duplicate's blockers and labels", () => {
+            const blocker = store.create({ title: "Blocker" });
+            const keeper = store.create({ title: "The real one", labels: ["cli"] });
+            const dupe = store.create({
+                title: "Filed twice",
+                labels: ["cli", "core"],
+                blockedBy: [blocker.id]
+            });
+
+            const merged = store.merge(dupe.id, keeper.id);
+
+            expect(merged.labels).toEqual(["cli", "core"]);
+            expect(merged.blockedBy).toEqual([blocker.id]);
+        });
+
+        /** The self-block case: two duplicates naming each other is how people mark a duplicate. */
+        it("does not leave the survivor blocking itself", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice" });
+            store.block(keeper.id, dupe.id);
+
+            const merged = store.merge(dupe.id, keeper.id);
+
+            expect(merged.blockedBy).toBeUndefined();
+        });
+
+        it("removes the duplicate's file and leaves a tombstone pointing at the survivor", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice" });
+            const path = dupe.filePath!;
+
+            store.merge(dupe.id, keeper.id, { name: "claude", type: "agent" });
+
+            expect(existsSync(path)).toBe(false);
+            expect(store.all().map((issue) => issue.id)).toEqual([keeper.id]);
+
+            const tombstone = store
+                .events()
+                .events.find((event) => event.type === "merged" && event.id === dupe.id);
+
+            expect(tombstone).toMatchObject({
+                type: "merged",
+                id: dupe.id,
+                into: keeper.id,
+                title: "Filed twice",
+                by: "claude"
+            });
+        });
+
+        it("leaves the survivor's state and assignee alone", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice" });
+            store.claim(dupe.id, { name: "atlas", type: "agent" });
+
+            const merged = store.merge(dupe.id, keeper.id);
+
+            expect(merged.state).toBe(config.defaultState);
+            expect(merged.assignee).toBeUndefined();
+        });
+
+        it("still round-trips afterwards", () => {
+            const keeper = store.create({ title: "The real one" });
+            const dupe = store.create({ title: "Filed twice", description: "Why" });
+            store.addNote(dupe.id, "A note", { name: "atlas", type: "agent" });
+
+            store.merge(dupe.id, keeper.id);
+
+            expect(store.notRoundTrippable()).toEqual([]);
+        });
+    });
 });

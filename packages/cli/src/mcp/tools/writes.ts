@@ -208,4 +208,48 @@ export function registerWriteTools(server: McpServer, tools: ToolContext): void 
             });
         })
     );
+
+    /**
+     * Exposed to agents because agents are how duplicates get filed: two of them read the same backlog,
+     * neither sees the other's create, and the same work exists twice under two numbers.
+     *
+     * Unlike prune — which is deliberately CLI-only — this destroys nothing, so an agent reaching for it
+     * cannot lose anybody's writing.
+     */
+    server.registerTool(
+        "merge_issues",
+        {
+            title: "Merge a duplicate issue",
+            description:
+                "Fold a duplicate into the issue that keeps the work. Notes, children, blockers and " +
+                "labels move across, and the duplicate's description and plan are kept as a note. " +
+                "Use this rather than closing a duplicate as done — that would count it as finished work. " +
+                "Refuses when the two are parent and child.",
+            inputSchema: {
+                from: z.union([z.number().int(), z.string()]).describe("The duplicate, which goes"),
+                into: z
+                    .union([z.number().int(), z.string()])
+                    .describe("The issue that keeps the work")
+            }
+        },
+        guard((args: { from: number | string; into: number | string }) => {
+            const { config, store } = open();
+            const from = store.resolve(args.from);
+            const into = store.resolve(args.into);
+
+            const plan = store.planMerge(from.id, into.id);
+            const survivor = store.merge(from.id, into.id, author());
+
+            return text({
+                merged: { id: from.id, title: from.title },
+                into: issueJson(config, store.all(), survivor),
+                moved: {
+                    notes: plan.notes,
+                    children: plan.children.map((child) => child.id),
+                    dependents: plan.dependents.map((issue) => issue.id),
+                    labels: plan.labels
+                }
+            });
+        })
+    );
 }

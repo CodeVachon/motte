@@ -72,6 +72,7 @@ describe("handshake", () => {
                 "create_issue",
                 "get_issue",
                 "list_issues",
+                "merge_issues",
                 "next_issue",
                 "ready_issues",
                 "release_issue",
@@ -280,6 +281,48 @@ describe("writing", () => {
 
         expect(result.isError).toBe(true);
         expect(result.text).toContain("cycle");
+    });
+
+    /**
+     * The tool that exists because agents are what create the problem: two of them read the same backlog,
+     * neither sees the other's create, and the same work is filed twice.
+     */
+    describe("merge_issues", () => {
+        it("folds a duplicate in, keeping what it said", async () => {
+            await call(client, "create_issue", {
+                title: "Filed twice",
+                description: "The other agent's reasoning"
+            });
+            await call(client, "add_note", { ref: 2, body: "And its note" });
+
+            const result = (await call(client, "merge_issues", { from: 2, into: 1 })).json<{
+                merged: { id: number };
+                moved: { notes: number };
+            }>();
+
+            expect(result.merged.id).toBe(2);
+            expect(result.moved.notes).toBe(1);
+
+            const survivor = (await call(client, "get_issue", { ref: 1 })).json<{
+                notes: { body: string }[];
+            }>();
+            const bodies = survivor.notes.map((note) => note.body).join("\n");
+
+            expect(bodies).toContain("And its note");
+            expect(bodies).toContain("The other agent's reasoning");
+
+            // And the duplicate is gone, rather than sitting there looking like open work.
+            expect((await call(client, "get_issue", { ref: 2 })).isError).toBe(true);
+        });
+
+        it("refuses a parent and its own child, as an error the agent can read", async () => {
+            await call(client, "create_issue", { title: "Child", parent: 1 });
+
+            const result = await call(client, "merge_issues", { from: 1, into: 2 });
+
+            expect(result.isError).toBe(true);
+            expect(result.text).toContain("beneath");
+        });
     });
 });
 

@@ -151,6 +151,8 @@ export { commitsFor, type Commit } from "./git.js";
 
 export { rankReady, type Ranked, type RankOptions, type RankSignals } from "./next.js";
 
+export { mergedBody, mergedInto, MergeError, planMerge, type MergePlan } from "./merge.js";
+
 export {
     searchIssues,
     type Hit,

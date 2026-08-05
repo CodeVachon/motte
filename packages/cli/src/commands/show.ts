@@ -1,11 +1,69 @@
 import type { CommandModule } from "yargs";
-import { blocks, commitsFor, isReady, openBlockers, subtreeReport } from "@motte/core";
+import {
+    blocks,
+    commitsFor,
+    IssueNotFoundError,
+    isReady,
+    mergedInto,
+    openBlockers,
+    padId,
+    subtreeReport,
+    type Issue,
+    type IssueStore
+} from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import { dim, heading, issueLine, paintId, paintState, progressLine, warn } from "../ui/format.js";
 
 interface ShowArgs {
     ref: string;
     json?: boolean;
+}
+
+interface Followed {
+    /** The number that was asked for, which no longer exists. */
+    from: number;
+    at: string;
+    by: string;
+}
+
+/**
+ * The issue the ref names — or, if that number was merged away, the issue that has its work.
+ *
+ * This is what makes the tombstone worth writing. An old number in a commit message, a branch name or
+ * somebody's notes still leads somewhere, instead of `no issue #0090` and a dead end.
+ *
+ * Only `show` follows. A merged id resolving everywhere would mean `motte move 90 done` silently closing a
+ * different issue, and acting on the wrong issue is a worse failure than being told a number is gone.
+ */
+function follow(store: IssueStore, ref: string): { issue: Issue; followed?: Followed } {
+    try {
+        return { issue: store.resolve(ref) };
+    } catch (error) {
+        // Only a bare number can be followed: a title fragment that matches nothing was never an id.
+        const asked = Number(ref);
+        if (!(error instanceof IssueNotFoundError) || !Number.isInteger(asked)) throw error;
+
+        const events = store.events().events;
+
+        // A chain, because a survivor can itself be merged later. Bounded by the ids already seen, so a
+        // log that somehow points in a circle stops rather than spinning.
+        const seen = new Set<number>([asked]);
+        let tombstone = mergedInto(events, asked);
+        let first: Followed | undefined;
+
+        while (tombstone !== undefined) {
+            first ??= { from: asked, at: tombstone.at, by: tombstone.by };
+
+            const survivor = store.all().find((issue) => issue.id === tombstone?.into);
+            if (survivor !== undefined) return { issue: survivor, followed: first };
+
+            if (seen.has(tombstone.into)) break;
+            seen.add(tombstone.into);
+            tombstone = mergedInto(events, tombstone.into);
+        }
+
+        throw error;
+    }
 }
 
 export const showCommand: CommandModule<{}, ShowArgs> = {
@@ -21,13 +79,17 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
-        const issue = store.resolve(args.ref);
+        const { issue, followed } = follow(store, args.ref);
         const all = store.all();
         const children = store.children(issue.id);
 
         if (args.json === true) {
             emitJson({
                 ...issueJson(issue),
+                mergedFrom:
+                    followed === undefined
+                        ? null
+                        : { id: followed.from, at: followed.at, by: followed.by },
                 ready: isReady(config, all, issue),
                 openBlockers: openBlockers(config, all, issue).map((blocker) => ({
                     id: blocker.id,
@@ -49,6 +111,14 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
         }
 
         const out = process.stdout;
+
+        // Said first, and said plainly: the reader asked for one number and is looking at another.
+        if (followed !== undefined) {
+            out.write(
+                `\n${warn(`#${padId(followed.from)} was merged into ${paintId(issue.id)}`)} ` +
+                    `${dim(`by ${followed.by} on ${followed.at.slice(0, 10)}`)}\n`
+            );
+        }
 
         out.write(`\n${paintId(issue.id)} ${heading(issue.title)}\n`);
 
