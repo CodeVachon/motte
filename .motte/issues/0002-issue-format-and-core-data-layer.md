@@ -1,10 +1,10 @@
 ---
 id: 2
 title: Issue format and core data layer
-state: In Progress
+state: Done
 labels: [core]
 created: 2026-07-29T11:21:00Z
-updated: 2026-07-29T16:04:09Z
+updated: 2026-08-05T13:17:20Z
 ---
 
 ## Description
@@ -30,3 +30,7 @@ different surfaces share one implementation and one set of tests.
 
 This is where the heaviest test coverage in the project belongs. Everything above it is a thin
 adapter.
+
+### 2026-08-05T13:17:20Z — claude (agent)
+
+Every child has settled. The last one open was #0042, motte renumber — the repair half of deriving ids from a directory scan, which the ReadMe had been promising since 0.1.0 while the command did not exist. Closing on doctor's own prompting: the open-with-settled-children warning is what surfaced it.

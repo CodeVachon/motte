@@ -143,3 +143,12 @@ export {
     type WatchOptions
 } from "./watch.js";
 export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/json.js";
+
+export {
+    duplicateIds,
+    planRenumber,
+    type DuplicateGroup,
+    type Reassignment,
+    type Reference,
+    type RenumberPlan
+} from "./renumber.js";

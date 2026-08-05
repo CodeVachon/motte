@@ -635,6 +635,7 @@ describe("wiring", RETRY, () => {
             "restore",
             "serve",
             "doctor",
+            "renumber",
             "mcp",
             "install",
             "upgrade",
@@ -643,5 +644,109 @@ describe("wiring", RETRY, () => {
         ]) {
             expect(help).toContain(`motte ${command}`);
         }
+    });
+});
+
+/**
+ * `motte renumber`.
+ *
+ * The repair half of deriving ids from a directory scan. The ReadMe had promised this command since 0.1.0
+ * while `motte renumber` answered "Unknown argument", so `doctor` could report a duplicate id that nothing
+ * could clear.
+ */
+describe("renumber", RETRY, () => {
+    /** Two files claiming #7 and a child pointing at it, the way merging two branches leaves things. */
+    async function collided(): Promise<string> {
+        const root = await initialised();
+        const dir = join(root, ".motte", "issues");
+
+        writeFileSync(
+            join(dir, "0007-filed-first.md"),
+            "---\nid: 7\ntitle: Filed first\nstate: Todo\ncreated: 2026-08-01T09:00:00Z\n" +
+                "updated: 2026-08-01T09:00:00Z\n---\n\n## Description\n\nBranch A.\n",
+            "utf8"
+        );
+        writeFileSync(
+            join(dir, "0007-filed-second.md"),
+            "---\nid: 7\ntitle: Filed second\nstate: Todo\ncreated: 2026-08-02T09:00:00Z\n" +
+                "updated: 2026-08-02T09:00:00Z\n---\n\n## Description\n\nBranch B.\n",
+            "utf8"
+        );
+        writeFileSync(
+            join(dir, "0009-a-child.md"),
+            "---\nid: 9\ntitle: A child\nstate: Todo\nparent: 7\ncreated: 2026-08-03T09:00:00Z\n" +
+                "updated: 2026-08-03T09:00:00Z\n---\n\n## Description\n\nWhose child?\n",
+            "utf8"
+        );
+
+        return root;
+    }
+
+    it("clears the duplicate that doctor reports", async () => {
+        const root = await collided();
+        expect((await motte(root, ["doctor"])).code).toBe(1);
+
+        const run = await motte(root, ["renumber"]);
+
+        expect(run.code).toBe(0);
+        // The whole point: the error doctor could not clear is cleared.
+        expect((await motte(root, ["doctor"])).code).toBe(0);
+    });
+
+    it("leaves the earlier issue's number alone and renames the later file", async () => {
+        const root = await collided();
+
+        await motte(root, ["renumber"]);
+
+        const files = readdirSync(join(root, ".motte", "issues")).sort();
+        expect(files).toContain("0007-filed-first.md");
+        expect(files).toContain("0010-filed-second.md");
+        expect(files).not.toContain("0007-filed-second.md");
+    });
+
+    it("says which references it could not settle", async () => {
+        const root = await collided();
+
+        const run = await motte(root, ["renumber"]);
+
+        // #0009 said `parent: 7` and nothing on disk records which of the two it meant.
+        expect(run.stdout + run.stderr).toMatch(/#0009/);
+        expect(run.stdout + run.stderr).toMatch(/parent/);
+    });
+
+    it("changes nothing with --dry-run", async () => {
+        const root = await collided();
+        const before = readdirSync(join(root, ".motte", "issues")).sort();
+
+        const run = await motte(root, ["renumber", "--dry-run"]);
+
+        expect(run.stdout).toMatch(/would renumber/);
+        expect(readdirSync(join(root, ".motte", "issues")).sort()).toEqual(before);
+        expect((await motte(root, ["doctor"])).code).toBe(1);
+    });
+
+    it("reports the reassignments as JSON", async () => {
+        const root = await collided();
+
+        const run = await motte(root, ["renumber", "--json"]);
+        const body = run.json<{
+            renumbered: { from: number; to: number; file: string }[];
+            ambiguousReferences: { id: number; via: string }[];
+        }>();
+
+        expect(body.renumbered).toHaveLength(1);
+        expect(body.renumbered[0]!.from).toBe(7);
+        expect(body.renumbered[0]!.to).toBe(10);
+        expect(body.ambiguousReferences).toEqual([{ id: 9, via: "parent" }]);
+    });
+
+    it("says so when there is nothing to repair", async () => {
+        const root = await initialised();
+        await motte(root, ["add", "Only issue"]);
+
+        const run = await motte(root, ["renumber"]);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toMatch(/no duplicate ids/);
     });
 });

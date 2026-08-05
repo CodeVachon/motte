@@ -761,4 +761,84 @@ describe("IssueStore", () => {
         expect(customStore.create({ title: "Custom" }).state).toBe("Backlog");
         expect(customStore.setState(1, "ship").state).toBe("Shipped");
     });
+
+    /**
+     * Renumbering a file, which is the only mutator addressed by path rather than by id.
+     *
+     * It has to be: the only reason to call it is that two files claim one id, which is exactly when
+     * `require(id)` cannot tell them apart.
+     */
+    describe("renumberFile", () => {
+        /** Two files claiming #7, the way a merge of two branches leaves them. */
+        function duplicate(): { keeper: string; mover: string } {
+            const dir = config.issuesPath;
+            mkdirSync(dir, { recursive: true });
+
+            const keeper = join(dir, "0007-filed-first.md");
+            const mover = join(dir, "0007-filed-second.md");
+
+            writeFileSync(
+                keeper,
+                "---\nid: 7\ntitle: Filed first\nstate: Todo\ncreated: 2026-08-01T09:00:00Z\n" +
+                    "updated: 2026-08-01T09:00:00Z\n---\n\n## Description\n\nBranch A.\n",
+                "utf8"
+            );
+            writeFileSync(
+                mover,
+                "---\nid: 7\ntitle: Filed second\nstate: In Progress\ncreated: 2026-08-02T09:00:00Z\n" +
+                    "updated: 2026-08-02T09:00:00Z\n---\n\n## Description\n\nBranch B.\n",
+                "utf8"
+            );
+
+            return { keeper, mover };
+        }
+
+        it("moves the file it was given and leaves the other alone", () => {
+            const { keeper, mover } = duplicate();
+
+            const renumbered = store.renumberFile(mover, 10);
+
+            expect(renumbered.id).toBe(10);
+            expect(existsSync(mover)).toBe(false);
+            expect(existsSync(keeper)).toBe(true);
+            expect(existsSync(join(config.issuesPath, "0010-filed-second.md"))).toBe(true);
+            expect(new IssueStore(config).require(7).title).toBe("Filed first");
+        });
+
+        it("keeps everything except the id, and records where the number came from", () => {
+            const { mover } = duplicate();
+
+            const renumbered = store.renumberFile(mover, 10);
+
+            expect(renumbered.title).toBe("Filed second");
+            expect(renumbered.state).toBe("In Progress");
+            // `created` is identity: the issue was filed when it was filed, whatever it is called now.
+            expect(renumbered.created).toBe("2026-08-02T09:00:00Z");
+            expect(renumbered.notes.at(-1)?.body).toMatch(/Renumbered from #0007/);
+        });
+
+        it("attributes the note the way every other note is attributed", () => {
+            const { mover } = duplicate();
+
+            const renumbered = store.renumberFile(mover, 10, { name: "atlas", type: "agent" });
+
+            expect(renumbered.notes.at(-1)?.author).toEqual({ name: "atlas", type: "agent" });
+        });
+
+        it("refuses an id that is already taken rather than making a second collision", () => {
+            const { mover } = duplicate();
+
+            expect(() => store.renumberFile(mover, 7)).toThrow(/already in use/);
+            expect(existsSync(mover)).toBe(true);
+        });
+
+        it("leaves the backlog with no duplicates, which is the point", () => {
+            const { mover } = duplicate();
+
+            store.renumberFile(mover, 10);
+
+            const ids = new IssueStore(config).all().map((issue) => issue.id);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
+    });
 });

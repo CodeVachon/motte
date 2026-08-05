@@ -308,7 +308,22 @@ shared rather than parallel.
 
 The next id is derived by scanning the issues directory, not from a counter file — a counter would
 be a write-conflict on every single create. The trade is that two branches can each mint the same
-number. `motte doctor` detects duplicates and `motte renumber` repairs them.
+number. `motte doctor` detects duplicates and `motte renumber` repairs them:
+
+```bash
+motte renumber --dry-run   # what would move, and where
+motte renumber
+```
+
+The issue that had the number first keeps it — earliest `created`, with the filename breaking a tie so
+two people repairing the same merge get the same result. Whatever was filed later takes a fresh id above
+everything in use, so a renumber never re-uses a number that is already in a branch name or a commit
+message, and the file is renamed and gains a note saying where its number came from.
+
+What it will not do is rewrite references. A third issue saying `parent: 7` meant one of the two files
+and nothing on disk records which, so guessing would silently reshape your backlog. Those references are
+listed instead; they still point at the issue that kept the id, which is a valid reference rather than a
+dangling one.
 
 ## Development
 

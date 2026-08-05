@@ -21,7 +21,7 @@ import {
 } from "./events.js";
 import { readIssueRef, type IssueRef } from "./frontmatter.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
-import { issueFilename, slugify } from "./slug.js";
+import { issueFilename, padId, slugify } from "./slug.js";
 import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
 
 export class IssueNotFoundError extends Error {
@@ -458,6 +458,60 @@ export class IssueStore {
         };
 
         return this.write(next, issueFilename(next.id, next.title));
+    }
+
+    /**
+     * Give the issue in one specific file a new id, rewriting and renaming the file.
+     *
+     * Addressed by path rather than by id, because the only reason to call this is that two files claim
+     * the same id and `require(id)` therefore cannot tell them apart. That is also why it does not go
+     * through `write`: that helper finds the previous version by id, which under a duplicate would find
+     * the wrong file and delete it.
+     *
+     * A note records where the number came from. The event log cannot be reassigned — both files recorded
+     * their history under the one id, so those entries are already inseparable — and this way the file
+     * itself carries the explanation for anyone who later finds the old number in a commit message.
+     */
+    renumberFile(filePath: string, newId: number, author: AuthorOptions | Author = {}): Issue {
+        const existing = parseIssueFile(readFileSync(filePath, "utf8"), filePath);
+
+        if (this.all().some((issue) => issue.id === newId)) {
+            throw new Error(`#${newId} is already in use`);
+        }
+
+        const resolved: Author =
+            "type" in author && "name" in author && typeof author.name === "string"
+                ? (author as Author)
+                : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
+
+        const note: Note = {
+            at: timestamp(),
+            author: resolved,
+            body: `Renumbered from #${padId(existing.id)}, which two files had claimed.`
+        };
+
+        const next: Issue = {
+            ...existing,
+            id: newId,
+            notes: [...existing.notes, note],
+            updated: note.at
+        };
+
+        const target = join(this.config.issuesPath, issueFilename(newId, next.title));
+        const temp = `${target}.${process.pid}.tmp`;
+
+        writeFileSync(temp, formatIssueFile(next), "utf8");
+        renameSync(temp, target);
+
+        const written: Issue = { ...next, filePath: target };
+        this.cache.set(target, { mtimeMs: statSync(target).mtimeMs, issue: written });
+
+        if (filePath !== target) {
+            unlinkSync(filePath);
+            this.cache.delete(filePath);
+        }
+
+        return written;
     }
 
     /** Remove an issue's file. Children are left in place and reported as orphans by `doctor`. */
