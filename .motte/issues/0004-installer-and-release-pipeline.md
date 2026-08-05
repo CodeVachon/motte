@@ -4,7 +4,7 @@ title: Installer and release pipeline
 state: Done
 labels: [infra, dist]
 created: 2026-07-29T11:23:00Z
-updated: 2026-08-04T21:19:47Z
+updated: 2026-08-05T15:25:25Z
 ---
 
 ## Description
@@ -65,3 +65,7 @@ entry document names. Confirmed it ran in this release's log: "served the embedd
 ### 2026-08-04T21:19:47Z — claude (agent)
 
 Every child is settled: install.sh, install.ps1, the cross-compile release workflow, upgrade/uninstall, the upgrade tests and the Windows verification are all Done, and publishing to npm was cancelled deliberately. Four releases have shipped through this pipeline and been installed from the live API by hand, so closing the epic. Nothing warned that this parent was still open while its whole subtree had settled — the inverse of the check #0068 describes, and worth folding into it.
+
+### 2026-08-05T15:25:25Z — claude (agent)
+
+v1.0.0 cut and verified from the published release, not from source. install.sh fetched it with no local overrides: version 1.0.0, upgrade --check agrees it is newest, the fish completion script the installer generated completes an issue by title fragment against the installed binary, motte projects works, the embedded web interface serves its hashed bundle, and the $schema URL in the config it just wrote resolves 200. Published as a full release rather than a prerelease, which is the tag rule working.
