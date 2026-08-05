@@ -86,6 +86,7 @@ export async function motte(
     const previousLog = console.log;
     const previousError = console.error;
     const previousExitCode = process.exitCode;
+    const previousStdinTTY = process.stdin.isTTY;
     const previousEnv = new Map<string, string | undefined>();
     /**
      * `run` attaches an EPIPE listener to each stream every call. Harmless in the binary, which calls it
@@ -119,6 +120,16 @@ export async function motte(
 
     try {
         process.chdir(cwd);
+        /**
+         * Nothing was piped in.
+         *
+         * Commands that accept text on stdin read fd 0 directly, which in a vitest worker is the runner's
+         * own non-blocking stdin — a read there is at best meaningless and at worst a hang. Claiming a TTY
+         * is exactly what the production check looks for, so the read is skipped rather than faked.
+         *
+         * Feeding real stdin is `spawnMotte`'s job: only a separate process can have its own fd 0.
+         */
+        Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
         process.exit = ((exitCode?: number): never => {
             throw new ExitSignal(exitCode ?? 0);
         }) as typeof process.exit;
@@ -154,6 +165,10 @@ export async function motte(
         // Restored, not just recorded: leaking a non-zero exitCode would make vitest's own process
         // exit non-zero even with every test passing.
         process.exitCode = previousExitCode;
+        Object.defineProperty(process.stdin, "isTTY", {
+            value: previousStdinTTY,
+            configurable: true
+        });
         process.chdir(previousCwd);
         process.exit = previousExit;
         process.stdout.write = previousStdout;
@@ -200,7 +215,13 @@ export const SPAWN_TIMEOUT_MS = 20_000;
 /** Applied to the `wiring` describe, the only one that still spawns. See `SPAWN_TIMEOUT_MS`. */
 export const RETRY = { retry: 2 };
 
-export function spawnMotte(cwd: string, args: string[], env: Record<string, string> = {}): Run {
+export function spawnMotte(
+    cwd: string,
+    args: string[],
+    env: Record<string, string> = {},
+    /** Fed to the child's stdin. Undefined closes it, which is what "nothing was piped" looks like. */
+    input?: string
+): Run {
     // `bun <file>`, not `bun run <file>`: executing the entry point directly skips package.json script
     // resolution, which is per-spawn overhead this test pays sixty-odd times.
     const result = spawnSync("bun", [ENTRY, ...args], {
@@ -208,6 +229,7 @@ export function spawnMotte(cwd: string, args: string[], env: Record<string, stri
         encoding: "utf8",
         timeout: SPAWN_TIMEOUT_MS,
         killSignal: "SIGKILL",
+        ...(input === undefined ? {} : { input }),
         env: {
             ...process.env,
             // Deterministic authorship: CI has no git user configured, and NO_COLOR keeps assertions

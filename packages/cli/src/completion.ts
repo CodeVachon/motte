@@ -27,6 +27,7 @@ const POSITIONALS: Record<string, Expects[]> = {
     move: ["ref", "state"],
     assign: ["ref", "assignee"],
     note: ["ref", null],
+    merge: ["ref", "ref"],
     tree: ["ref"],
     block: ["ref", "ref"],
     unblock: ["ref", "blocker-of-previous"]

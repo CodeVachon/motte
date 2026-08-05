@@ -1,2 +1,4 @@
 {"at":"2026-08-05T14:43:14Z","id":39,"by":"Christopher Vachon","as":"user","type":"state","from":"Todo","to":"Cancelled"}
 {"at":"2026-08-05T18:14:40Z","id":90,"by":"Christopher Vachon","as":"user","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T18:33:26Z","id":97,"by":"Christopher Vachon","as":"user","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T18:33:26Z","id":97,"by":"Christopher Vachon","as":"user","type":"assigned","from":null,"to":"Christopher Vachon"}

@@ -11,6 +11,7 @@ import {
 import { context, emitJson, issueJson } from "../context.js";
 import { EditorRejectedError, editInEditor } from "../ui/editor.js";
 import { dim, issueLine, ok, paintId, paintState } from "../ui/format.js";
+import { textArg } from "../ui/textArg.js";
 
 /**
  * Report a created or updated issue.
@@ -116,7 +117,8 @@ function editInteractively(store: IssueStore, config: Config, target: Issue, jso
 }
 
 interface AddArgs {
-    title: string;
+    title?: string;
+    _: (string | number)[];
     parent?: string;
     description?: string;
     plan?: string;
@@ -127,11 +129,14 @@ interface AddArgs {
 }
 
 export const addCommand: CommandModule<{}, AddArgs> = {
-    command: "add <title>",
+    // `[title]` rather than `<title>`: a required positional fails its demand check before yargs will
+    // take the value from after a `--`, so a title starting with a dash could not be passed at all.
+    // `textArg` demands it instead, and can say how to escape it.
+    command: "add [title]",
     describe: "Create an issue",
     builder: (yargs) =>
         yargs
-            .positional("title", { type: "string", demandOption: true, describe: "Issue title" })
+            .positional("title", { type: "string", describe: "Issue title" })
             .option("parent", {
                 alias: "p",
                 type: "string",
@@ -152,8 +157,16 @@ export const addCommand: CommandModule<{}, AddArgs> = {
         const { config, store } = context();
         const parent = args.parent === undefined ? undefined : store.resolve(args.parent).id;
 
+        // No stdin: a title is one line, and a piped title would collide with `-d` reading a description.
+        const title = textArg({
+            value: args.title,
+            argv: args._,
+            what: "title",
+            usage: "motte add"
+        });
+
         const issue = store.create({
-            title: args.title,
+            title,
             ...(parent === undefined ? {} : { parent }),
             ...(args.description === undefined ? {} : { description: args.description }),
             ...(args.plan === undefined ? {} : { plan: args.plan }),
@@ -202,14 +215,17 @@ export const moveCommand: CommandModule<{}, MoveArgs> = {
 
 interface NoteArgs {
     ref: string;
-    body: string;
+    body?: string;
+    _: (string | number)[];
     author?: string;
     agent?: boolean;
     json?: boolean;
 }
 
 export const noteCommand: CommandModule<{}, NoteArgs> = {
-    command: "note <ref> <body>",
+    // `[body]`, for the reason given on `add` — and here it also buys stdin, which is what a note long
+    // enough to be worth writing in an editor actually wants.
+    command: "note <ref> [body]",
     describe: "Add a note to an issue",
     builder: (yargs) =>
         yargs
@@ -218,7 +234,10 @@ export const noteCommand: CommandModule<{}, NoteArgs> = {
                 demandOption: true,
                 describe: "Issue number or title fragment"
             })
-            .positional("body", { type: "string", demandOption: true, describe: "Note text" })
+            .positional("body", {
+                type: "string",
+                describe: "Note text. Omit to read it from stdin."
+            })
             .option("author", { type: "string", describe: "Override the author name" })
             .option("agent", {
                 type: "boolean",
@@ -229,7 +248,15 @@ export const noteCommand: CommandModule<{}, NoteArgs> = {
         const { store } = context();
         const target = store.resolve(args.ref);
 
-        const issue = store.addNote(target.id, args.body, {
+        const body = textArg({
+            value: args.body,
+            argv: args._,
+            what: "note body",
+            usage: `motte note ${args.ref}`,
+            stdin: true
+        });
+
+        const issue = store.addNote(target.id, body, {
             ...(args.author === undefined ? {} : { name: args.author }),
             ...(args.agent === true ? { type: "agent" as const } : {})
         });

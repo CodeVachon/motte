@@ -138,6 +138,12 @@ describe("issue refs", () => {
 
         expect(login.description).toBe("#0001 [Todo]");
     });
+
+    /** Both sides of a merge are issues, and both want completing — the command arrived without it. */
+    it("completes both positionals of merge", () => {
+        expect(values(completionCandidates(source, ["merge"], ""))).toEqual(["1", "2", "7"]);
+        expect(values(completionCandidates(source, ["merge", "7"], ""))).toEqual(["1", "2", "7"]);
+    });
 });
 
 describe("states", () => {

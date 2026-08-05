@@ -48,6 +48,7 @@ import {
 import { showCommand } from "./commands/show.js";
 import { AgentConfigError } from "./install/agents.js";
 import { EditorError } from "./ui/editor.js";
+import { TextArgError } from "./ui/textArg.js";
 import { renderStatus, statusCommand, treeCommand } from "./commands/status.js";
 import { uninstallCommand, upgradeCommand } from "./commands/upgrade.js";
 import { VERSION as CLI_VERSION } from "./version.js";
@@ -70,7 +71,8 @@ const EXPECTED_ERRORS = [
     EditorError,
     IssueNotFoundError,
     IssueParseError,
-    MergeError
+    MergeError,
+    TextArgError
 ];
 
 /**
@@ -82,6 +84,36 @@ function isBrokenPipe(thrown: unknown): boolean {
         typeof thrown === "object" &&
         thrown !== null &&
         (thrown as { code?: string }).code === "EPIPE"
+    );
+}
+
+/**
+ * The parse failures that are really "your text begins with a dash".
+ *
+ * yargs says "Unknown argument: fix repairs" or "Not enough non-option arguments", neither of which tells
+ * anybody what to do about `motte note 42 "--dry-run is the safety"`. Since notes and titles in a project
+ * like this quote flag names constantly, the failure is common and the message has to teach the escape.
+ *
+ * Matched on the argv rather than the message, so this only ever fires when something really did start with
+ * a dash and there was no `--` to protect it.
+ */
+function dashHint(message: string, argv: readonly string[]): string {
+    const parseFailure =
+        message.startsWith("Unknown argument") ||
+        message.startsWith("Not enough non-option arguments");
+
+    if (!parseFailure || argv.includes("--")) return "";
+
+    // Skipped: the command name itself, and anything that is a plausible flag rather than prose. A flag is
+    // one word; free text that tripped the parser has a space in it or looks like a sentence.
+    const looksLikeText = argv.some(
+        (word, index) => index > 0 && word.startsWith("-") && /[\s.]/.test(word)
+    );
+    if (!looksLikeText) return "";
+
+    return (
+        `\n${dim("  Text that starts with a dash has to come after `--`, or the parser reads it as a flag:")}` +
+        `\n${dim(`    motte ${argv[0]} … -- "--your text"`)}`
     );
 }
 
@@ -275,7 +307,7 @@ function buildCli(argv: string[]) {
                 cli.showHelp();
                 process.exit(1);
             }
-            process.stderr.write(`${error(message)}\n`);
+            process.stderr.write(`${error(message)}${dashHint(message, argv)}\n`);
             process.exit(1);
         });
 

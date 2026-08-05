@@ -137,6 +137,22 @@ file is renamed to match.
 Editor resolution follows git: `MOTTE_EDITOR`, then `VISUAL`, then `EDITOR`, then `vi` (`notepad` on
 Windows). Commands with flags work — `EDITOR="code -w"`.
 
+### Notes, and text that starts with a dash
+
+```bash
+motte note 42 "Chose frontmatter over JSON for diff quality."
+motte note 42 -- "--dry-run is the safety."   # text beginning with a dash
+motte note 42 < decision.md                   # or a heredoc, or a pipe
+```
+
+A note body is the one place where prose meets an argument parser, and it shows. `motte note 42
+"--dry-run is the safety."` reads as a flag, so text that starts with a dash goes after `--` — the
+usual convention, and motte says so if you forget. Flag _values_ need no separator, only quoting:
+`-d="--dry-run is the safety."`.
+
+Omit the body entirely and it is read from stdin, which is what a note worth writing in an editor
+wants anyway — newlines and paragraphs survive, which an argument does not carry comfortably.
+
 ### Dependencies
 
 Parent/child is a tree. Dependencies are a DAG that crosses it — a child of one epic can gate work
