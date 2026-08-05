@@ -13,6 +13,11 @@ export default defineConfig({
     },
     test: {
         globals: true,
+        /**
+         * Runs before every test file, in each worker. It clears the two environment variables that decide
+         * note authorship — see the file for what that cost.
+         */
+        setupFiles: ["./vitest.setup.ts"],
         include: ["packages/*/src/**/*.test.{ts,tsx}", "apps/*/src/**/*.test.{ts,tsx}"],
         /**
          * The CLI tests spawn a real subprocess per assertion, which is the point — wiring and exit
