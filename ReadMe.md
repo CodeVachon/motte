@@ -149,6 +149,37 @@ motte ready --blocked    # what is waiting, and on what
 motte list --ready
 ```
 
+### Choosing and taking work
+
+```bash
+motte next --why           # what to pick up, and why that one
+motte claim 42             # take it: assigns you and starts it, in one step
+motte release 42           # put it back if you stop
+```
+
+`ready` says what _could_ be started, in id order. `next` says what _should_ be: it orders that set by what
+a piece of work would unblock, how close it is to a leaf — leaves are what actually finish epics — and how
+long it has waited, and it leaves out anything somebody else holds. `--why` prints the reasoning, because an
+ordering nobody can argue with is one nobody trusts.
+
+`claim` is the half that makes several agents on one backlog workable. Two of them ask `next`, both get
+`#0042`, and without claiming both set themselves as the assignee: the second write wins, the first agent's
+work is orphaned, and the record shows one name — so nothing ever says it happened. Claiming refuses
+instead, and a refusal is useful: ask `next` again and take something else.
+
+```
+$ motte claim 1                     # as atlas
+✓ claimed by atlas
+#0001 In Progress Shared work · @atlas
+
+$ motte claim 1                     # as nova, a moment later
+✗ #0001 is already claimed by atlas
+```
+
+Within one working tree that is decidable, which is the case that matters. Across branches git stays the
+arbiter, the same bargain the rest of the format makes. `--force` exists for a person who knows the other
+agent is gone.
+
 **Ready** means not settled and nothing standing in the way. It is computed, never stored — a
 readiness field in a hand-edited file would go stale the moment someone closed a blocker without
 touching what it blocked. Same reasoning applies to the inverse: only `blockedBy` is written to

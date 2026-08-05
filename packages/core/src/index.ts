@@ -11,6 +11,7 @@ export {
 
 export {
     AmbiguousRefError,
+    ClaimedError,
     CycleError,
     DependencyCycleError,
     IssueNotFoundError,
@@ -145,6 +146,8 @@ export {
 export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/json.js";
 
 export { filterIssues, matchesFilter, type FilterOptions, type IssueFilter } from "./filter.js";
+
+export { rankReady, type Ranked, type RankOptions, type RankSignals } from "./next.js";
 
 export {
     snapshotChanges,

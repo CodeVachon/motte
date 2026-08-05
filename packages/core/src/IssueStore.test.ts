@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
     AmbiguousRefError,
+    ClaimedError,
     CycleError,
     DependencyCycleError,
     IssueNotFoundError,
@@ -839,6 +840,140 @@ describe("IssueStore", () => {
 
             const ids = new IssueStore(config).all().map((issue) => issue.id);
             expect(new Set(ids).size).toBe(ids.length);
+        });
+    });
+
+    /**
+     * Claiming, which is the compare-and-set that makes several agents on one backlog workable.
+     *
+     * The refusal is the feature. Without it both agents set themselves as assignee, the second write wins,
+     * and the record shows one name — so nothing ever says two of them were working on the same thing.
+     */
+    describe("claim and release", () => {
+        it("assigns and starts in one step", () => {
+            const issue = store.create({ title: "Shared" });
+
+            const claimed = store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            expect(claimed.assignee).toBe("atlas");
+            expect(claimed.state).toBe("In Progress");
+        });
+
+        it("refuses when somebody else holds it", () => {
+            const issue = store.create({ title: "Shared" });
+            store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            expect(() => store.claim(issue.id, { name: "nova", type: "agent" })).toThrow(
+                ClaimedError
+            );
+        });
+
+        it("names the holder, so the caller can say who has it", () => {
+            const issue = store.create({ title: "Shared" });
+            store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            expect(() => store.claim(issue.id, { name: "nova", type: "agent" })).toThrow(/atlas/);
+        });
+
+        /** Claiming your own work again is a no-op, not a collision — an agent may retry. */
+        it("lets the holder claim it again", () => {
+            const issue = store.create({ title: "Shared" });
+            store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            expect(store.claim(issue.id, { name: "Atlas", type: "agent" }).assignee).toBe("atlas");
+        });
+
+        it("takes it anyway with force, for a person who knows the other agent is gone", () => {
+            const issue = store.create({ title: "Shared" });
+            store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            const taken = store.claim(issue.id, { name: "chris", type: "user" }, { force: true });
+
+            expect(taken.assignee).toBe("chris");
+        });
+
+        it("refuses settled work, which nobody needs to pick up", () => {
+            const issue = store.create({ title: "Finished" });
+            store.setState(issue.id, "Done");
+
+            expect(() => store.claim(issue.id, { name: "atlas", type: "agent" })).toThrow(
+                ClaimedError
+            );
+        });
+
+        it("leaves an already-started issue in the state it is in", () => {
+            const custom = project([
+                { name: "Todo", category: "unstarted" },
+                { name: "In Progress", category: "started" },
+                { name: "Blocked", category: "started" },
+                { name: "Done", category: "completed" }
+            ]);
+            const other = new IssueStore(custom);
+            const issue = other.create({ title: "Waiting on a vendor" });
+            other.setState(issue.id, "Blocked");
+
+            // Blocked is a started state; claiming must not quietly reinterpret it as In Progress.
+            expect(other.claim(issue.id, { name: "atlas", type: "agent" }).state).toBe("Blocked");
+        });
+
+        it("records the transitions, so the log shows who took it and when", () => {
+            const issue = store.create({ title: "Shared" });
+            store.claim(issue.id, { name: "atlas", type: "agent" });
+
+            const types = store.events().events.map((event) => event.type);
+            expect(types).toContain("assigned");
+            expect(types).toContain("state");
+        });
+
+        describe("release", () => {
+            it("clears the assignee and returns it to the default state", () => {
+                const issue = store.create({ title: "Shared" });
+                store.claim(issue.id, { name: "atlas", type: "agent" });
+
+                const freed = store.release(issue.id, { name: "atlas", type: "agent" });
+
+                expect(freed.assignee).toBeUndefined();
+                expect(freed.state).toBe("Todo");
+            });
+
+            it("refuses to release somebody else's work", () => {
+                const issue = store.create({ title: "Shared" });
+                store.claim(issue.id, { name: "atlas", type: "agent" });
+
+                expect(() => store.release(issue.id, { name: "nova", type: "agent" })).toThrow(
+                    ClaimedError
+                );
+            });
+
+            it("releases it anyway with force", () => {
+                const issue = store.create({ title: "Shared" });
+                store.claim(issue.id, { name: "atlas", type: "agent" });
+
+                expect(
+                    store.release(issue.id, { name: "chris", type: "user" }, { force: true })
+                        .assignee
+                ).toBeUndefined();
+            });
+
+            /** Unassigning finished work is fine; sending it back to Todo would undo it. */
+            it("does not reopen settled work", () => {
+                const issue = store.create({ title: "Finished" });
+                store.claim(issue.id, { name: "atlas", type: "agent" });
+                store.setState(issue.id, "Done");
+
+                const freed = store.release(issue.id, { name: "atlas", type: "agent" });
+
+                expect(freed.state).toBe("Done");
+                expect(freed.assignee).toBeUndefined();
+            });
+
+            it("is fine on work nobody holds", () => {
+                const issue = store.create({ title: "Nobody's" });
+
+                expect(
+                    store.release(issue.id, { name: "atlas", type: "agent" }).assignee
+                ).toBeUndefined();
+            });
         });
     });
 });

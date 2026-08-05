@@ -27,8 +27,9 @@ const FILE_HEADING = "# Agent instructions";
  *
  * Deliberately about the loop rather than the command list — `motte --help` is better at the latter, and a
  * copy of it here would be a second copy to keep current. What an agent cannot discover from `--help` is
- * that `ready` is the question to start with, that a prerequisite belongs in `block` rather than in prose,
- * and that notes are where the reasoning goes.
+ * that `next` is the question to start with, that claiming comes before working and a refusal means take
+ * something else, that a prerequisite belongs in `block` rather than in prose, and that notes are where the
+ * reasoning goes.
  */
 export function instructionBlock(): string {
     return `${BLOCK_START}
@@ -38,22 +39,24 @@ export function instructionBlock(): string {
 This project's work lives in \`.motte/issues/\` as Markdown files, committed alongside the code. Track
 work there rather than in an ad-hoc TODO list, a commit message, or a pull request description.
 
-Start with what is actually available:
+Start by asking what to do:
 
 \`\`\`
-motte ready
+motte next --why
 \`\`\`
 
-That is not \`motte list\`. **Ready** means unsettled with every blocker settled, so it excludes work that
-cannot be started yet. \`motte ready --blocked\` shows what is waiting and on what.
+That is not \`motte list\`, and not quite \`motte ready\` either. **Ready** means unsettled with every
+blocker settled; \`next\` orders that set by what a piece of work would unblock, how close it is to a leaf,
+and how long it has waited — and it leaves out anything somebody else holds. \`motte ready --blocked\` shows
+what is waiting and on what.
 
 The loop for an issue you pick up:
 
-1. Read it — \`motte show <ref>\`
-2. Refine its **Plan** if the plan on the file is not what you are actually going to do
-3. Move it to In Progress — \`motte move <ref> "in progress"\`
+1. Claim it — \`motte claim <ref>\`. If that fails, somebody else is on it: ask \`motte next\` again.
+2. Read it — \`motte show <ref>\`
+3. Refine its **Plan** if the plan on the file is not what you are actually going to do
 4. Add notes as you go, especially for decisions and dead ends — \`motte note <ref> "..."\`
-5. Move it to Done when the verification for that issue passes
+5. Move it to Done when the verification for that issue passes, or \`motte release <ref>\` if you stop
 
 A \`<ref>\` is an issue number or a fragment of the title, so \`motte show parser\` works as well as
 \`motte show 12\`.

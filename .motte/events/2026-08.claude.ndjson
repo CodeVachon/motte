@@ -65,3 +65,8 @@
 {"at":"2026-08-05T15:50:27Z","id":96,"by":"claude","as":"agent","type":"created","title":"Authentication for motte serve on a network","state":"Todo"}
 {"at":"2026-08-05T15:50:28Z","id":96,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Cancelled"}
 {"at":"2026-08-05T15:50:39Z","id":87,"by":"claude","as":"agent","type":"blocked","blocker":86}
+{"at":"2026-08-05T16:02:59Z","id":84,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T16:10:03Z","id":85,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T16:20:31Z","id":84,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T16:20:32Z","id":85,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T16:20:51Z","id":83,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}

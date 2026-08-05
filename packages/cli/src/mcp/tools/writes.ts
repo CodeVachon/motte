@@ -69,6 +69,59 @@ export function registerWriteTools(server: McpServer, tools: ToolContext): void 
         })
     );
 
+    /**
+     * Claiming, which is the step that makes several agents on one backlog workable.
+     *
+     * Placed before `set_state` deliberately: an agent that moves an issue to In Progress by hand has
+     * announced nothing and can still collide with another agent doing the same. Claiming refuses, and a
+     * refusal is information — ask `next_issue` again and take something else.
+     */
+    server.registerTool(
+        "claim_issue",
+        {
+            title: "Claim an issue",
+            description:
+                "Take an issue: assign it to this agent and start it, in one step. Fails if somebody " +
+                "else already holds it, which means another agent is on it — ask next_issue for another. " +
+                "Call this before doing any work on an issue.",
+            inputSchema: {
+                ref: z.union([z.number().int(), z.string()]),
+                force: z
+                    .boolean()
+                    .optional()
+                    .describe("Take it even if somebody else holds it. Rarely right for an agent.")
+            }
+        },
+        guard((args: { ref: number | string; force?: boolean }) => {
+            const { config, store } = open();
+            const target = store.resolve(args.ref);
+            const issue = store.claim(target.id, tools.author(), { force: args.force === true });
+
+            return text({ claimed: issueJson(config, store.all(), issue) });
+        })
+    );
+
+    server.registerTool(
+        "release_issue",
+        {
+            title: "Release an issue",
+            description:
+                "Put an issue back: clear the assignee and return it to the default state. Call this if " +
+                "you abandon work you claimed, so the next agent can pick it up.",
+            inputSchema: {
+                ref: z.union([z.number().int(), z.string()]),
+                force: z.boolean().optional().describe("Release it even if somebody else holds it")
+            }
+        },
+        guard((args: { ref: number | string; force?: boolean }) => {
+            const { config, store } = open();
+            const target = store.resolve(args.ref);
+            const issue = store.release(target.id, tools.author(), { force: args.force === true });
+
+            return text({ released: issueJson(config, store.all(), issue) });
+        })
+    );
+
     server.registerTool(
         "set_state",
         {

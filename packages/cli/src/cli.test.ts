@@ -637,6 +637,9 @@ describe("wiring", RETRY, () => {
             "block",
             "unblock",
             "ready",
+            "next",
+            "claim",
+            "release",
             "status",
             "tree",
             "log",
@@ -868,6 +871,170 @@ describe("completion", RETRY, () => {
 
             expect(replies).toContain("renumber");
             expect(replies).not.toContain("renumber:");
+        });
+    });
+});
+
+/**
+ * `motte next` and `motte claim`.
+ *
+ * Together they are the loop the tool exists for: ask what to do, take it, and be refused if somebody else
+ * already has it. Driven through the CLI because the interesting part is what two callers with different
+ * identities see.
+ */
+describe("choosing and taking work", RETRY, () => {
+    async function backlog(): Promise<string> {
+        const root = await initialised();
+        await motte(root, ["add", "Gate everything"]);
+        await motte(root, ["add", "Behind the gate"]);
+        await motte(root, ["add", "Also behind it"]);
+        await motte(root, ["add", "Unrelated"]);
+        await motte(root, ["block", "2", "1"]);
+        await motte(root, ["block", "3", "1"]);
+
+        return root;
+    }
+
+    describe("next", () => {
+        it("picks the issue that unblocks the most, not the lowest id", async () => {
+            const root = await backlog();
+
+            const chosen = (await motte(root, ["next", "--json"])).json<{
+                issues: { id: number; why: string[] }[];
+            }>();
+
+            expect(chosen.issues[0]!.id).toBe(1);
+            expect(chosen.issues[0]!.why).toContain("unblocks 2 issues");
+        });
+
+        it("explains itself when asked", async () => {
+            const root = await backlog();
+
+            const run = await motte(root, ["next", "--why"]);
+
+            expect(run.stdout).toContain("#0001");
+            expect(run.stdout).toContain("unblocks 2 issues");
+        });
+
+        it("shows one by default and says how many others are ready", async () => {
+            // Two candidates: #0001 and #0004. #0002 and #0003 are blocked behind #0001.
+            const root = await backlog();
+
+            const one = await motte(root, ["next"]);
+            expect(one.stdout).toContain("#0001");
+            expect(one.stdout).toMatch(/1 more ready/);
+
+            const both = await motte(root, ["next", "--limit", "2"]);
+            expect(both.stdout).toContain("#0004");
+            expect(both.stdout).not.toMatch(/more ready/);
+        });
+
+        it("leaves out work another agent holds", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            const chosen = (await motte(root, ["next", "--json"], { MOTTE_AGENT: "nova" })).json<{
+                issues: { id: number }[];
+            }>();
+
+            // #0001 is atlas's now, and #0002 and #0003 are still blocked by it.
+            expect(chosen.issues[0]!.id).toBe(4);
+        });
+
+        it("reminds an agent of the work it already started", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "4"], { MOTTE_AGENT: "atlas" });
+
+            const chosen = (await motte(root, ["next", "--json"], { MOTTE_AGENT: "atlas" })).json<{
+                issues: { id: number; why: string[] }[];
+            }>();
+
+            expect(chosen.issues[0]!.id).toBe(4);
+            expect(chosen.issues[0]!.why).toContain("already yours, and started");
+        });
+
+        /**
+         * Everything settled, rather than a cycle: `motte block` rejects a cycle at write time, so a
+         * backlog where every issue blocks another cannot be built through the CLI at all.
+         */
+        it("says so when nothing is ready, and points at what is waiting", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "First"]);
+            await motte(root, ["move", "1", "done"]);
+
+            const run = await motte(root, ["next"]);
+
+            expect(run.stdout).toMatch(/nothing is ready/);
+            expect(run.stdout).toContain("--blocked");
+        });
+    });
+
+    describe("claim", () => {
+        it("assigns and starts in one step", async () => {
+            const root = await backlog();
+
+            const claimed = (
+                await motte(root, ["claim", "1", "--json"], { MOTTE_AGENT: "atlas" })
+            ).json<IssueJson>();
+
+            expect(claimed).toMatchObject({ assignee: "atlas", state: "In Progress" });
+        });
+
+        /** The refusal is the feature: without it both agents write and the second one wins silently. */
+        it("refuses a second agent, and exits non-zero so a script notices", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            const run = await motte(root, ["claim", "1"], { MOTTE_AGENT: "nova" });
+
+            expect(run.code).toBe(1);
+            expect(run.stderr).toMatch(/already claimed by atlas/);
+        });
+
+        it("takes it anyway with --force", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            const run = await motte(root, ["claim", "1", "--force"], { MOTTE_AGENT: "nova" });
+
+            expect(run.code).toBe(0);
+        });
+
+        it("refuses settled work", async () => {
+            const root = await backlog();
+            await motte(root, ["move", "4", "done"]);
+
+            expect((await motte(root, ["claim", "4"], { MOTTE_AGENT: "atlas" })).code).toBe(1);
+        });
+
+        it("takes a title fragment, like every other command", async () => {
+            const root = await backlog();
+
+            const run = await motte(root, ["claim", "unrelated"], { MOTTE_AGENT: "atlas" });
+
+            expect(run.code).toBe(0);
+            expect(run.stdout).toContain("#0004");
+        });
+    });
+
+    describe("release", () => {
+        it("puts the work back for somebody else", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            const freed = (
+                await motte(root, ["release", "1", "--json"], { MOTTE_AGENT: "atlas" })
+            ).json<IssueJson>();
+
+            expect(freed).toMatchObject({ assignee: null, state: "Todo" });
+            expect((await motte(root, ["claim", "1"], { MOTTE_AGENT: "nova" })).code).toBe(0);
+        });
+
+        it("refuses to release what somebody else holds", async () => {
+            const root = await backlog();
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            expect((await motte(root, ["release", "1"], { MOTTE_AGENT: "nova" })).code).toBe(1);
         });
     });
 });

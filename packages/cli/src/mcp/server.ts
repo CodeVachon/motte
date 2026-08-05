@@ -12,17 +12,20 @@ import { registerBreakdownTool } from "./tools/breakdown.js";
 const INSTRUCTIONS = `motte tracks issues as committed Markdown files, so the record is shared with
 whoever else works in this repository — including the humans.
 
-Start with ready_issues, not list_issues. "Ready" means unsettled with every blocker settled; work that
-is still blocked cannot be started, and picking it up anyway wastes effort.
+Start with next_issue. It returns the issue to pick up and why — what it unblocks, how close it is to a
+leaf, how long it has waited — and it leaves out anything another agent holds. ready_issues gives the whole
+set in id order if you want to see it, but choosing from that yourself means choosing arbitrarily.
 
 For any issue you take on:
 
-1. get_issue to read it, including its plan and prior notes
-2. If the plan on the file is not what you are actually going to do, update_issue to correct it first
-3. set_state to the started state
+1. claim_issue before anything else. If it fails, another agent is on that issue: ask next_issue again
+   and take something else rather than working on it anyway.
+2. get_issue to read it, including its plan and prior notes
+3. If the plan on the file is not what you are actually going to do, update_issue to correct it first
 4. add_note as you go — decisions, dead ends, and anything the next person would otherwise have to
    rediscover. Notes are cheap and they are the main reason this record is worth keeping.
 5. set_state to the completed state only once the work is actually verified
+6. release_issue if you abandon it, so it does not sit looking like work in progress
 
 Use breakdown to split a large issue into children, rather than creating them one at a time.
 

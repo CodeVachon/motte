@@ -1,11 +1,11 @@
 ---
 id: 85
 title: motte claim — refuse the second agent rather than letting both start
-state: Todo
+state: Done
 parent: 83
 labels: [cli, core, agents]
 created: 2026-08-05T15:49:57Z
-updated: 2026-08-05T15:49:57Z
+updated: 2026-08-05T16:20:32Z
 ---
 
 ## Description
@@ -24,3 +24,13 @@ Two agents, one backlog. Both call `ready_issues`, both get #0042, both move it 
 4. `claim_issue` and `release_issue` MCP tools, named as the first step after `ready_issues`
 5. Update the AGENTS.md block: claim before working, release if you abandon it
 6. Tests: two claims in a row, claiming your own, claiming settled work, the --force path
+
+## Notes
+
+### 2026-08-05T16:20:31Z — claude (agent)
+
+claim and release on the store, with ClaimedError so a caller can tell 'taken' from 'missing' and try the next issue. Compare-and-set within one working tree, which is the case that matters; across branches git stays the arbiter.
+
+Two behaviours the tests corrected. Claiming an issue already in a started state left it there rather than moving it — Blocked is a started category in this project's own config, and claiming must not quietly reinterpret it as In Progress. And re-claiming your own work keeps the stored spelling of your name, so a retry costs no write and records no transition.
+
+Verified through both surfaces: over the CLI, atlas claims, nova is refused with exit 1, nova asks next and gets different work, atlas releases, nova takes it. Over MCP the refusal comes back as isError with the holder named, which is what lets an agent recover rather than stall. The AGENTS.md block and the MCP instructions now put claiming first, since it is the step an agent skips unless told — and skipping it is exactly what puts two of them on one issue.

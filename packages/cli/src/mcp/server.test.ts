@@ -68,10 +68,13 @@ describe("handshake", () => {
             [
                 "add_note",
                 "breakdown",
+                "claim_issue",
                 "create_issue",
                 "get_issue",
                 "list_issues",
+                "next_issue",
                 "ready_issues",
+                "release_issue",
                 "set_blockers",
                 "set_parent",
                 "set_state",
@@ -82,11 +85,14 @@ describe("handshake", () => {
         );
     });
 
-    it("sends instructions that point the agent at ready_issues first", async () => {
+    it("sends instructions that start the agent at next_issue and claiming", async () => {
         const client = await connect(project());
         const instructions = client.getInstructions() ?? "";
 
-        expect(instructions).toContain("ready_issues");
+        expect(instructions).toContain("next_issue");
+        // The step an agent will skip unless told, and skipping it is what puts two of them on one issue.
+        expect(instructions).toContain("claim_issue");
+        expect(instructions).toContain("release_issue");
         expect(instructions.length).toBeGreaterThan(200);
     });
 
@@ -98,6 +104,7 @@ describe("handshake", () => {
         expect(readOnly.map((tool) => tool.name).sort()).toEqual([
             "get_issue",
             "list_issues",
+            "next_issue",
             "ready_issues",
             "status_report",
             "tree"

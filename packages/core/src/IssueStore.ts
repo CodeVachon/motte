@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { resolveAuthor, timestamp, type AuthorOptions } from "./author.js";
-import { resolveState, type Config } from "./config.js";
-import { blocked, blocks, findDependencyCycle, ready } from "./deps.js";
+import { resolveState, stateCategory, type Config } from "./config.js";
+import { blocked, blocks, findDependencyCycle, isSettled, ready } from "./deps.js";
 import {
     appendEvents,
     eventsDir,
@@ -41,6 +41,22 @@ export class AmbiguousRefError extends Error {
                 candidates.map((issue) => `#${issue.id} ${issue.title}`).join(", ")
         );
         this.name = "AmbiguousRefError";
+    }
+}
+
+/**
+ * Somebody else holds the issue.
+ *
+ * Its own error type because refusing is the point: a caller has to be able to tell "taken" apart from
+ * "missing" or "malformed" and try the next issue instead of failing.
+ */
+export class ClaimedError extends Error {
+    constructor(
+        readonly id: number,
+        readonly holder: string
+    ) {
+        super(`#${padId(id)} is already claimed by ${holder}`);
+        this.name = "ClaimedError";
     }
 }
 
@@ -410,6 +426,85 @@ export class IssueStore {
         return this.update(id, { assignee });
     }
 
+    /**
+     * Take an issue: set the assignee and start it, together, refusing if somebody else holds it.
+     *
+     * The whole point is the refusal. Two agents call `ready` or `next`, both get #0042, and today both set
+     * themselves as assignee — the second write wins, the first agent's work is orphaned, and the record
+     * shows one name, so nothing ever said it happened.
+     *
+     * Compare-and-set within one working tree, which is the case that matters: two agents in one repository.
+     * Across branches git stays the arbiter, the same bargain the rest of the format makes, and `doctor`
+     * reports what conflicts.
+     */
+    claim(
+        id: number,
+        author: AuthorOptions | Author = {},
+        options: { force?: boolean } = {}
+    ): Issue {
+        const existing = this.require(id);
+        const claimant = this.nameOf(author);
+
+        if (isSettled(this.config, existing)) {
+            throw new ClaimedError(id, `nobody — #${padId(id)} is already ${existing.state}`);
+        }
+
+        const holder = existing.assignee;
+        if (
+            options.force !== true &&
+            holder !== undefined &&
+            holder.toLowerCase() !== claimant.toLowerCase()
+        ) {
+            throw new ClaimedError(id, holder);
+        }
+
+        // The first started state in the project's own order. A project may configure several — this one
+        // has Blocked as well as In Progress — and the first is the one that means "being worked on".
+        const started = this.config.states.find((state) => state.category === "started");
+
+        // Already started stays as it is. Any started state means the work has begun, so a Blocked issue
+        // must not be quietly reinterpreted as In Progress by the act of claiming it.
+        const alreadyStarted = stateCategory(this.config, existing.state) === "started";
+
+        // The stored spelling wins when the same person claims again, so retrying costs no write and records
+        // no transition just because they typed their name differently. Anyone else — which only `force`
+        // reaches — takes it over.
+        const sameHolder = holder !== undefined && holder.toLowerCase() === claimant.toLowerCase();
+
+        return this.update(id, {
+            ...(sameHolder ? {} : { assignee: claimant }),
+            ...(started === undefined || alreadyStarted ? {} : { state: started.name })
+        });
+    }
+
+    /**
+     * Put an issue back: clear the assignee and return it to the default state.
+     *
+     * The other half of claiming. Without it, an agent that gives up either leaves the issue looking like
+     * work in progress or edits two fields and hopes the next one notices.
+     */
+    release(
+        id: number,
+        author: AuthorOptions | Author = {},
+        options: { force?: boolean } = {}
+    ): Issue {
+        const existing = this.require(id);
+        const holder = existing.assignee;
+
+        if (
+            options.force !== true &&
+            holder !== undefined &&
+            holder.toLowerCase() !== this.nameOf(author).toLowerCase()
+        ) {
+            throw new ClaimedError(id, holder);
+        }
+
+        return this.update(id, {
+            assignee: null,
+            ...(isSettled(this.config, existing) ? {} : { state: this.config.defaultState })
+        });
+    }
+
     /** Add a blocker. Idempotent — blocking twice on the same issue is not an error. */
     block(id: number, blocker: number): Issue {
         const existing = this.require(id);
@@ -522,6 +617,13 @@ export class IssueStore {
      * straight through — that is how the MCP server attributes a note to the agent rather than to the git
      * user — and anything else goes through `resolveAuthor`.
      */
+    /** The name to record for a caller, however they identified themselves. */
+    private nameOf(author: AuthorOptions | Author): string {
+        return "type" in author && "name" in author && typeof author.name === "string"
+            ? author.name
+            : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root }).name;
+    }
+
     private noteFrom(body: string, author: AuthorOptions | Author): Note {
         const resolved: Author =
             "type" in author && "name" in author && typeof author.name === "string"

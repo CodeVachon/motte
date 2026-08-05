@@ -7,6 +7,7 @@ import {
     epicReports,
     openBlockers,
     projectReport,
+    rankReady,
     ready,
     subtreeReport,
     type Issue,
@@ -18,6 +19,52 @@ import { fullIssueJson, issueJson, text } from "../shape.js";
 /** The read-only tools. `ready_issues` comes first because it is the one an agent should reach for. */
 export function registerReadTools(server: McpServer, tools: ToolContext): void {
     const { open, guard } = tools;
+
+    /**
+     * Ordered, not just filtered.
+     *
+     * `ready_issues` hands back a set in id order, so an agent facing fifteen of them takes the lowest
+     * number. This is the tool that answers "what should I do", and it says why — an agent can put the
+     * reason in a note, which is how the choice stays inspectable later.
+     */
+    server.registerTool(
+        "next_issue",
+        {
+            title: "Next issue",
+            description:
+                "The issue to pick up next, ordered by what it unblocks, how close it is to a leaf, and " +
+                "how long it has waited. Work assigned to somebody else is left out. Prefer this over " +
+                "ready_issues when choosing what to work on, then claim_issue before starting.",
+            inputSchema: {
+                limit: z
+                    .number()
+                    .int()
+                    .positive()
+                    .optional()
+                    .describe("How many to return (default 1)"),
+                mine: z.boolean().optional().describe("Only work already assigned to this agent")
+            },
+            annotations: { readOnlyHint: true }
+        },
+        guard((args: { limit?: number; mine?: boolean }) => {
+            const { config, store } = open();
+            const issues = store.all();
+
+            const ranked = rankReady(config, issues, {
+                assignee: tools.author().name,
+                mineOnly: args.mine === true
+            });
+
+            return text({
+                count: ranked.length,
+                issues: ranked.slice(0, args.limit ?? 1).map((entry) => ({
+                    ...issueJson(config, issues, entry.issue),
+                    why: entry.reasons,
+                    signals: entry.signals
+                }))
+            });
+        })
+    );
 
     server.registerTool(
         "ready_issues",

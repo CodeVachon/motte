@@ -134,13 +134,22 @@ describe("half-written markers", () => {
 
 describe("the block's content", () => {
     /** The parts an agent cannot get from `--help`, which is the only reason the block exists. */
-    it("teaches ready, the loop, notes and block", () => {
+    it("teaches next, claiming, the loop, notes and block", () => {
         const block = instructionBlock();
 
-        expect(block).toMatch(/motte ready/);
-        expect(block).toMatch(/motte move <ref> "in progress"/);
+        expect(block).toMatch(/motte next/);
+        expect(block).toMatch(/motte claim <ref>/);
+        expect(block).toMatch(/motte release <ref>/);
         expect(block).toMatch(/motte note <ref>/);
         expect(block).toMatch(/motte block <ref> <blocker>/);
         expect(block).toMatch(/\.motte\/issues\//);
+    });
+
+    /**
+     * The claim step is the one an agent will skip if the instructions merely mention it, and skipping it
+     * is what puts two agents on one issue.
+     */
+    it("says what to do when a claim fails, since that is the whole point of claiming", () => {
+        expect(instructionBlock()).toMatch(/If that fails/);
     });
 });

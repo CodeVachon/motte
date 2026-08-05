@@ -2,6 +2,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import {
     AmbiguousRefError,
+    ClaimedError,
     ConfigError,
     ConfigNotFoundError,
     CycleError,
@@ -10,6 +11,7 @@ import {
     IssueParseError
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
+import { claimCommand, releaseCommand } from "./commands/claim.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { projectsCommand } from "./commands/projects.js";
 import { renumberCommand } from "./commands/renumber.js";
@@ -26,6 +28,7 @@ import { context, registerVisit } from "./context.js";
 import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
+import { nextCommand } from "./commands/next.js";
 import { listCommand } from "./commands/list.js";
 import { logCommand } from "./commands/log.js";
 import { PruneError, pruneCommand, restoreCommand } from "./commands/prune.js";
@@ -52,6 +55,7 @@ export { VERSION } from "./version.js";
  */
 const EXPECTED_ERRORS = [
     AgentConfigError,
+    ClaimedError,
     PruneError,
     AmbiguousRefError,
     ConfigError,
@@ -157,6 +161,9 @@ function buildCli(argv: string[]) {
         .command(blockCommand)
         .command(unblockCommand)
         .command(readyCommand)
+        .command(nextCommand)
+        .command(claimCommand)
+        .command(releaseCommand)
         .command(statusCommand)
         .command(treeCommand)
         .command(logCommand)
