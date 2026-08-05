@@ -1,5 +1,5 @@
-import { snapshotChanges, type Change, type Config, type Snapshot } from "@motte/core";
-import { changeLine, frame } from "./render.js";
+import { snapshotChanges, type Config, type Snapshot } from "@motte/core";
+import { changeLine, frame, type ProjectView, type TaggedChange } from "./render.js";
 
 /**
  * The watch loop, with everything it touches passed in.
@@ -8,6 +8,10 @@ import { changeLine, frame } from "./render.js";
  * imports, because every interesting behaviour here is otherwise untestable: what happens when a read
  * fails, what a resize redraws, what a non-terminal gets instead of a frame, and that stopping actually
  * stops. #0033 learned the same lesson about the HTTP server.
+ *
+ * Takes a list of sources rather than one, because `--all` watches every registered project. One source is
+ * the ordinary case and goes down the same path — two renderers that had to agree would drift, and a change
+ * from one project rendered against another's states would be quietly wrong.
  */
 
 export interface Screen {
@@ -18,11 +22,17 @@ export interface Screen {
     onResize?: (handler: () => void) => () => void;
 }
 
-export interface WatchDeps {
+/** One project to watch: what to call it, how to read it, and how to know it moved. */
+export interface WatchSource {
+    name: string;
+    config: Config;
     /** Re-read everything. Throwing is expected — a write can be observed mid-rename. */
     read: () => Snapshot;
-    /** Called with a callback to run whenever the backlog moves. Absent when polling instead. */
+    /** Called with a callback to run whenever this backlog moves. Absent when polling instead. */
     watch?: (onChange: () => void) => () => void;
+}
+
+export interface WatchDeps {
     /** Poll every this many milliseconds, for filesystems where watching does not work. */
     intervalMs?: number;
     screen: Screen;
@@ -30,6 +40,8 @@ export interface WatchDeps {
     tty: boolean;
     /** How much history to keep. Bounded so a long session cannot grow without limit. */
     keep?: number;
+    /** Registered projects deliberately left unwatched, so the frame can say so. */
+    omitted?: number;
 }
 
 const KEEP = 200;
@@ -43,23 +55,34 @@ export interface RunningWatch {
     stop: () => void;
 }
 
-export function startWatch(config: Config, deps: WatchDeps): RunningWatch {
-    const keep = deps.keep ?? KEEP;
-    const changes: Change[] = [];
+interface Tracked {
+    source: WatchSource;
+    view: ProjectView;
+    previous?: Snapshot;
+}
 
-    let previous: Snapshot | undefined;
-    let problem: string | undefined;
+export function startWatch(sources: readonly WatchSource[], deps: WatchDeps): RunningWatch {
+    const keep = deps.keep ?? KEEP;
+    const changes: TaggedChange[] = [];
+
+    const tracked: Tracked[] = sources.map((source) => ({
+        source,
+        view: { name: source.name, config: source.config, issues: [] }
+    }));
+
     let live = true;
     let stopped = false;
 
     const draw = (): void => {
-        if (stopped) return;
-
-        if (!deps.tty) return;
+        if (stopped || !deps.tty) return;
 
         const lines = frame(
-            config,
-            { issues: previous?.issues ?? [], changes, live, problem },
+            {
+                projects: tracked.map((entry) => entry.view),
+                changes,
+                live,
+                ...(deps.omitted === undefined ? {} : { omitted: deps.omitted })
+            },
             { columns: deps.screen.columns, rows: deps.screen.rows }
         );
 
@@ -67,50 +90,70 @@ export function startWatch(config: Config, deps: WatchDeps): RunningWatch {
     };
 
     /**
-     * Re-read and report the difference.
+     * Re-read one project and report the difference.
      *
      * A failed read is shown rather than thrown: a file can be caught mid-write, and a dashboard that dies
      * the first time it observes a rename in progress is not a dashboard. The next successful read clears
-     * the message.
+     * the message. With several projects it also has to be per-project — one unreadable backlog must not
+     * blank out the others.
      */
-    const refresh = (): void => {
+    const refresh = (entry: Tracked): void => {
         if (stopped) return;
 
         let next: Snapshot;
         try {
-            next = deps.read();
+            next = entry.source.read();
         } catch (thrown) {
-            problem = `could not read the backlog: ${thrown instanceof Error ? thrown.message : String(thrown)}`;
+            entry.view = {
+                ...entry.view,
+                problem: `could not read the backlog: ${thrown instanceof Error ? thrown.message : String(thrown)}`
+            };
             draw();
             return;
         }
 
-        problem = undefined;
+        const view: ProjectView = {
+            name: entry.source.name,
+            config: entry.source.config,
+            issues: next.issues
+        };
+        entry.view = view;
 
-        if (previous !== undefined) {
-            const fresh = snapshotChanges(config, previous, next);
+        if (entry.previous !== undefined) {
+            const fresh = snapshotChanges(entry.source.config, entry.previous, next);
 
             for (const change of fresh) {
-                changes.push(change);
+                changes.push({ project: view, change });
                 // In a pipe there is no frame to redraw, so each change is a line as it happens — which is
                 // what makes `motte watch | tee` and `motte watch > log` useful.
-                if (!deps.tty) deps.screen.write(`${changeLine(config, change)}\n`);
+                if (!deps.tty) {
+                    deps.screen.write(`${changeLine(view, change, labelWidth())}\n`);
+                }
             }
 
             if (changes.length > keep) changes.splice(0, changes.length - keep);
         }
 
-        previous = next;
+        entry.previous = next;
         draw();
     };
+
+    /** Zero for a single project, so its lines carry no redundant column. */
+    const labelWidth = (): number =>
+        sources.length > 1 ? Math.max(...sources.map((source) => source.name.length), 1) : 0;
 
     if (deps.tty) deps.screen.write(ENTER_FULLSCREEN);
 
     // The first read is the baseline: it reports nothing, because everything already on disk is not news.
-    refresh();
+    for (const entry of tracked) refresh(entry);
 
-    const unwatch = deps.watch?.(refresh);
-    const timer = deps.intervalMs === undefined ? undefined : setInterval(refresh, deps.intervalMs);
+    const refreshAll = (): void => {
+        for (const entry of tracked) refresh(entry);
+    };
+
+    const unwatchers = tracked.map((entry) => entry.source.watch?.(() => refresh(entry)));
+    const timer =
+        deps.intervalMs === undefined ? undefined : setInterval(refreshAll, deps.intervalMs);
     const unresize = deps.screen.onResize?.(draw);
 
     return {
@@ -119,7 +162,7 @@ export function startWatch(config: Config, deps: WatchDeps): RunningWatch {
             stopped = true;
             live = false;
 
-            unwatch?.();
+            for (const unwatch of unwatchers) unwatch?.();
             unresize?.();
             if (timer !== undefined) clearInterval(timer);
 

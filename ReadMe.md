@@ -297,6 +297,7 @@ deleted is shown as `missing` rather than forgotten — it may be on a volume th
 
 ```bash
 motte watch                  # a live dashboard in the terminal
+motte watch --all            # every registered project at once
 motte watch --interval 5     # poll instead, for filesystems where watching is unreliable
 motte watch | tee run.log    # one line per change, for a pipe
 ```
@@ -305,6 +306,31 @@ The motivating case is several agents working at once: seeing that one has start
 has finished one, as it happens. It shows progress, what is in flight and who has it, and a stream of
 transitions underneath — including the one the event log cannot record, an issue **becoming ready**
 because somebody else closed its blocker.
+
+`--all` follows from the same motivation, because agents working in parallel are rarely all in one
+repository. The total goes on top, a row per project underneath, and every change names where it came
+from:
+
+```
+3 projects
+
+████████████░░░░░░░░░░░░ 50%  2 done · 1 started · 1 todo
+
+  beta   100%  1/1
+  alpha   50%  1/2  #0002 In Progress  atlas
+  gamma    0%  0/1
+
+changes
+
+  14:02  alpha  #0002  Todo → In Progress  Second      atlas (agent)
+  14:03  gamma  #0001  note  “Picking this up next.”   Chris (user)
+```
+
+Each project is read through its own config, so two projects that name their states differently both
+come out right — and the total is summed from each one's own reckoning of what "done" means. Eight are
+watched by default (`--limit` changes it) because each one holds filesystem watchers open; the header
+says how many were left, rather than opening forty quietly or showing a subset quietly. A project whose
+config has gone is named and skipped.
 
 `motte serve` covers the browser; this is for the window already open beside your editor. In a pipe it
 drops the dashboard and prints a line per change instead, so redirecting it works.

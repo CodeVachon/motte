@@ -90,3 +90,6 @@
 {"at":"2026-08-05T18:47:39Z","id":92,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-08-05T18:47:39Z","id":92,"by":"claude","as":"agent","type":"assigned","from":null,"to":"claude"}
 {"at":"2026-08-05T19:03:28Z","id":92,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T19:08:55Z","id":91,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T19:08:55Z","id":91,"by":"claude","as":"agent","type":"assigned","from":null,"to":"claude"}
+{"at":"2026-08-05T19:30:29Z","id":91,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

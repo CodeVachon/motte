@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_STATES, type Config, type Issue, type Snapshot } from "@motte/core";
-import { startWatch, type Screen } from "./run.js";
+import { startWatch, type Screen, type WatchDeps, type WatchSource } from "./run.js";
 
 /**
  * The watch loop.
@@ -95,12 +95,38 @@ function fakeWatch() {
     };
 }
 
+/**
+ * The one-project call, which is what most of these are about.
+ *
+ * `startWatch` takes a list of sources so `--all` can watch several. These tests are about the loop —
+ * a read that throws, a resize, a pipe, stopping — none of which changed, so they say what they always
+ * said and this adapter keeps the arity out of the way. The several-project behaviour is its own describe.
+ */
+function startOne(
+    project: Config,
+    deps: Omit<WatchDeps, "screen"> & {
+        read: () => Snapshot;
+        watch?: (onChange: () => void) => () => void;
+        screen: Screen;
+    }
+) {
+    const { read, watch, ...rest } = deps;
+    const source: WatchSource = {
+        name: project.name,
+        config: project,
+        read,
+        ...(watch === undefined ? {} : { watch })
+    };
+
+    return startWatch([source], rest);
+}
+
 describe("in a terminal", () => {
     it("draws a frame at once, before anything has changed", () => {
         const screen = fakeScreen();
         const reads = fakeReads([snapshot([issue()])]);
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: reads.read,
             watch: fakeWatch(),
             screen: screen.screen,
@@ -116,7 +142,7 @@ describe("in a terminal", () => {
     it("takes the alternate screen buffer and gives it back on stop", () => {
         const screen = fakeScreen();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([snapshot([issue()])]).read,
             watch: fakeWatch(),
             screen: screen.screen,
@@ -138,7 +164,7 @@ describe("in a terminal", () => {
         const screen = fakeScreen();
         const watch = fakeWatch();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([
                 snapshot([issue()]),
                 snapshot([issue({ state: "In Progress", updated: "2026-08-02T14:00:00Z" })])
@@ -159,7 +185,7 @@ describe("in a terminal", () => {
         const screen = fakeScreen();
         const reads = fakeReads([snapshot([issue()])]);
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: reads.read,
             watch: fakeWatch(),
             screen: screen.screen,
@@ -183,7 +209,7 @@ describe("in a pipe", () => {
         const screen = fakeScreen();
         const watch = fakeWatch();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([
                 snapshot([issue()]),
                 snapshot([issue({ state: "In Progress", updated: "2026-08-02T14:00:00Z" })])
@@ -206,7 +232,7 @@ describe("in a pipe", () => {
     it("says nothing at all until something changes", () => {
         const screen = fakeScreen();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([snapshot([issue()])]).read,
             watch: fakeWatch(),
             screen: screen.screen,
@@ -223,7 +249,7 @@ describe("a read that fails", () => {
         const screen = fakeScreen();
 
         // A file can be caught mid-rename; a dashboard that exits the first time it sees that is useless.
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: () => {
                 throw new Error("unexpected end of input");
             },
@@ -242,7 +268,7 @@ describe("a read that fails", () => {
         const watch = fakeWatch();
         let fail = true;
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: () => {
                 if (fail) throw new Error("mid-write");
                 return snapshot([issue()]);
@@ -273,7 +299,7 @@ describe("polling instead of watching", () => {
         const screen = fakeScreen();
         const reads = fakeReads([snapshot([issue()])]);
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: reads.read,
             intervalMs: 1000,
             screen: screen.screen,
@@ -292,7 +318,7 @@ describe("polling instead of watching", () => {
         const screen = fakeScreen();
         const reads = fakeReads([snapshot([issue()])]);
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: reads.read,
             intervalMs: 1000,
             screen: screen.screen,
@@ -312,7 +338,7 @@ describe("stopping", () => {
         const screen = fakeScreen();
         const watch = fakeWatch();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([snapshot([issue()])]).read,
             watch,
             screen: screen.screen,
@@ -328,7 +354,7 @@ describe("stopping", () => {
     it("is safe to call twice, which happens when a signal and exit both fire", () => {
         const screen = fakeScreen();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([snapshot([issue()])]).read,
             watch: fakeWatch(),
             screen: screen.screen,
@@ -347,7 +373,7 @@ describe("stopping", () => {
         const screen = fakeScreen();
         const watch = fakeWatch();
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             read: fakeReads([snapshot([issue()]), snapshot([issue({ state: "Done" })])]).read,
             watch,
             screen: screen.screen,
@@ -367,7 +393,7 @@ describe("history", () => {
         const watch = fakeWatch();
         let state = 0;
 
-        const running = startWatch(config, {
+        const running = startOne(config, {
             // Each read renames the issue, so every trigger produces exactly one change.
             read: () => {
                 state += 1;
@@ -385,5 +411,163 @@ describe("history", () => {
         expect(frame).toContain("Title 7");
         expect(frame).not.toContain("Title 3 ");
         running.stop();
+    });
+});
+
+/**
+ * Several projects at once.
+ *
+ * The behaviour that only appears with more than one source: that each is watched and read independently,
+ * that one failing does not take the others down, and that a change is attributed to the project it came
+ * from rather than to whichever config happened to be first.
+ */
+describe("watching several projects", () => {
+    const other: Config = { ...config, name: "Other", root: "/elsewhere" };
+
+    interface Fake {
+        source: WatchSource;
+        trigger: () => void;
+        reads: () => number;
+    }
+
+    /** A source whose readings can be queued and whose watcher can be fired by hand. */
+    function fake(project: Config, readings: Snapshot[]): Fake {
+        const reads = fakeReads(readings);
+        let onChange: () => void = () => undefined;
+
+        return {
+            source: {
+                name: project.name,
+                config: project,
+                read: reads.read,
+                watch: (handler) => {
+                    onChange = handler;
+                    return () => undefined;
+                }
+            },
+            trigger: () => onChange(),
+            reads: reads.calls
+        };
+    }
+
+    it("reads every project for its baseline", () => {
+        const one = fake(config, [snapshot([issue()])]);
+        const two = fake(other, [snapshot([issue({ id: 2 })])]);
+        const screen = fakeScreen();
+
+        const running = startWatch([one.source, two.source], { screen: screen.screen, tty: true });
+
+        expect(one.reads()).toBe(1);
+        expect(two.reads()).toBe(1);
+        expect(screen.all()).toContain("2 projects");
+        running.stop();
+    });
+
+    /** Each project's own watcher fires only its own read: forty projects must not mean forty re-parses. */
+    it("re-reads only the project that moved", () => {
+        const one = fake(config, [
+            snapshot([issue()]),
+            snapshot([issue({ state: "In Progress" })])
+        ]);
+        const two = fake(other, [snapshot([issue({ id: 2 })])]);
+
+        const running = startWatch([one.source, two.source], {
+            screen: fakeScreen().screen,
+            tty: true
+        });
+
+        one.trigger();
+
+        expect(one.reads()).toBe(2);
+        expect(two.reads()).toBe(1);
+        running.stop();
+    });
+
+    it("attributes a change to the project it came from", () => {
+        const one = fake(config, [
+            snapshot([issue()]),
+            snapshot([issue({ state: "In Progress" })])
+        ]);
+        const two = fake(other, [snapshot([issue({ id: 2 })])]);
+        const screen = fakeScreen();
+
+        const running = startWatch([one.source, two.source], { screen: screen.screen, tty: true });
+        one.trigger();
+
+        // The project column, on the change line rather than only in the summary.
+        expect(screen.all()).toContain("Test Project");
+        running.stop();
+    });
+
+    /** One unreadable backlog must not blank out the others — it says so in its own row. */
+    it("keeps watching the rest when one project cannot be read", () => {
+        const good = fake(config, [snapshot([issue({ state: "In Progress" })])]);
+        const bad: WatchSource = {
+            name: "Broken",
+            config: { ...config, name: "Broken" },
+            read: () => {
+                throw new Error("mid-rename");
+            },
+            watch: () => () => undefined
+        };
+        const screen = fakeScreen();
+
+        const running = startWatch([good.source, bad], { screen: screen.screen, tty: true });
+
+        expect(screen.all()).toContain("Broken");
+        expect(screen.all()).toContain("mid-rename");
+        // And the readable one is still shown.
+        expect(screen.all()).toContain("Test Project");
+        running.stop();
+    });
+
+    it("stops every watcher, not just the first", () => {
+        let stopped = 0;
+        const sources: WatchSource[] = [config, other].map((project) => ({
+            name: project.name,
+            config: project,
+            read: () => snapshot([issue()]),
+            watch: () => () => {
+                stopped += 1;
+            }
+        }));
+
+        startWatch(sources, { screen: fakeScreen().screen, tty: true }).stop();
+
+        expect(stopped).toBe(2);
+    });
+
+    it("names the project on each line when piped, where there is no summary to read", () => {
+        const one = fake(config, [
+            snapshot([issue()]),
+            snapshot([issue({ state: "In Progress" })])
+        ]);
+        const two = fake(other, [snapshot([issue({ id: 2 })])]);
+        const screen = fakeScreen();
+
+        const running = startWatch([one.source, two.source], { screen: screen.screen, tty: false });
+        one.trigger();
+
+        expect(screen.all()).toContain("Test Project");
+        running.stop();
+    });
+
+    it("polls every project on one timer rather than one each", () => {
+        vi.useFakeTimers();
+        const one = fake(config, [snapshot([issue()])]);
+        const two = fake(other, [snapshot([issue({ id: 2 })])]);
+
+        const running = startWatch([one.source, two.source], {
+            intervalMs: 1000,
+            screen: fakeScreen().screen,
+            tty: true
+        });
+
+        vi.advanceTimersByTime(1000);
+
+        expect(one.reads()).toBe(2);
+        expect(two.reads()).toBe(2);
+        running.stop();
+        vi.useRealTimers();
     });
 });
