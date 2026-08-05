@@ -188,6 +188,22 @@ impossible rather than merely rare.
 
 Set `"events": { "enabled": false }` in the config to turn it off.
 
+### Watching it happen
+
+```bash
+motte watch                  # a live dashboard in the terminal
+motte watch --interval 5     # poll instead, for filesystems where watching is unreliable
+motte watch | tee run.log    # one line per change, for a pipe
+```
+
+The motivating case is several agents working at once: seeing that one has started an issue and another
+has finished one, as it happens. It shows progress, what is in flight and who has it, and a stream of
+transitions underneath — including the one the event log cannot record, an issue **becoming ready**
+because somebody else closed its blocker.
+
+`motte serve` covers the browser; this is for the window already open beside your editor. In a pipe it
+drops the dashboard and prints a line per change instead, so redirecting it works.
+
 ### Pruning old work
 
 ```bash

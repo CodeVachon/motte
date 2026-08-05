@@ -42,3 +42,6 @@
 {"at":"2026-08-05T14:07:36Z","id":62,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-08-05T14:11:24Z","id":62,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-08-05T14:16:05Z","id":81,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
+{"at":"2026-08-05T14:16:34Z","id":63,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T14:29:09Z","id":63,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T14:29:09Z","id":60,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}

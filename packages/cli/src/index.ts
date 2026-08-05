@@ -13,6 +13,7 @@ import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { renumberCommand } from "./commands/renumber.js";
 import { serveCommand } from "./commands/serve.js";
+import { watchCommand } from "./commands/watch.js";
 import {
     candidateStyle,
     completionCandidates,
@@ -163,6 +164,7 @@ function buildCli(argv: string[]) {
         .command(doctorCommand)
         .command(renumberCommand)
         .command(serveCommand)
+        .command(watchCommand)
         .command(mcpCommand)
         .command(installCommand)
         .command(upgradeCommand)

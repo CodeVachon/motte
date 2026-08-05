@@ -634,6 +634,7 @@ describe("wiring", RETRY, () => {
             "prune",
             "restore",
             "serve",
+            "watch",
             "doctor",
             "renumber",
             "mcp",

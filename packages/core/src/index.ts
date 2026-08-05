@@ -147,6 +147,15 @@ export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/js
 export { filterIssues, matchesFilter, type FilterOptions, type IssueFilter } from "./filter.js";
 
 export {
+    snapshotChanges,
+    idOf,
+    whenOf,
+    UNATTRIBUTED,
+    type Change,
+    type Snapshot
+} from "./changes.js";
+
+export {
     duplicateIds,
     planRenumber,
     type DuplicateGroup,

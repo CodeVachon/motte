@@ -285,6 +285,17 @@ describe("who did it", () => {
 });
 
 describe("ordering", () => {
+    /** A consequence cannot precede its cause: closing #0002 is what made #0001 ready. */
+    it("puts an unstamped change after the stamped ones it followed from", () => {
+        const changes = snapshotChanges(
+            config,
+            snapshot([issue({ id: 1, blockedBy: [2] }), issue({ id: 2 })]),
+            snapshot([issue({ id: 1, blockedBy: [2] }), issue({ id: 2, state: "Done" })])
+        );
+
+        expect(kinds(changes)).toEqual(["state", "ready"]);
+    });
+
     it("reads in the order things happened", () => {
         const early: Event = {
             at: "2026-08-02T09:00:00Z",
