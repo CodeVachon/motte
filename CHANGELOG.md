@@ -1,8 +1,75 @@
 # Changelog
 
-Everything below 1.0 ships as a pre-release. Releases up to 0.4.0 shipped without the documentation
-site or the schema URLs every `.motte.config.json` points at; both are live now, on `main`, and go
-out with the next release.
+Everything below 1.0 shipped as a pre-release, because the documentation site and the schema URLs
+every `.motte.config.json` points at did not exist yet. Both are live, and 1.0.0 is the first full
+release.
+
+## 1.0.0
+
+The first full release. Everything the tool promised is now true: the schema URLs resolve, the site
+exists, and the last commands the ReadMe described but did not have are built.
+
+### Added
+
+- **The published JSON Schemas.** `motte init` has written a `$schema` field since 0.1.0 and nothing
+  was ever served there. `schema/config.json` and `schema/issue.json` are now live, generated from
+  the same zod schemas that validate at runtime — a hand-written schema can describe a config the
+  loader would reject, and an editor showing green on a file motte refuses is worse than no schema.
+  A test compares the committed files against a fresh projection, so changing a schema without
+  regenerating fails.
+- **The landing page**, at [codevachon.github.io/motte](https://codevachon.github.io/motte/), with a
+  Pages workflow that deploys it and the schemas together. The build refuses if a schema's `$id`
+  disagrees with the URL it will be served at, and the deploy checks the live URL afterwards —
+  a deployment can report success while serving nothing.
+- **`motte watch`** — the backlog live in the terminal: progress, what is in flight and who has it,
+  and a stream of transitions underneath. It shows the one thing the event log cannot record, an
+  issue **becoming ready** because somebody else closed its blocker, which is the moment that
+  matters when several agents are working. In a pipe it drops the dashboard and prints a line per
+  change, so `motte watch | tee` works. `--interval` polls where watching is unreliable.
+- **`motte projects`, `status --all`, `list --all`** — the questions no single repository can answer.
+  What is assigned to me everywhere, what is in flight across all my work, where I left off. Any
+  command run in a project registers it in `~/.motte/projects.json`; `MOTTE_NO_INDEX=1` turns that
+  off. Summaries only, never issue bodies, and `--all` re-reads each project rather than trusting
+  the cache.
+- **`motte renumber`**, the other half of deriving ids from a directory scan. Two branches can each
+  mint #7; `doctor` reported it and nothing could repair it, while the ReadMe promised this command.
+  The issue that had the number first keeps it, the later one takes a fresh id above everything in
+  use, and references it cannot disambiguate are reported rather than rewritten — a third issue
+  saying `parent: 7` meant one of the two and nothing records which.
+- **fish and PowerShell completion**, the two shells yargs has no template for, and completion is
+  now wired up by the installer rather than left for you to find. `install.sh` generates all three
+  unix scripts and switches fish on, since fish autoloads from a directory and needs no edit to a
+  file you own; bash and zsh get the one line printed. `motte uninstall` removes the fish script,
+  and only when it is the one motte generated.
+- **`motte init` wires up agents and writes AGENTS.md.** A new project is one command rather than
+  two. The AGENTS.md section covers what an MCP server cannot tell an agent: that `ready` is the
+  question to start with, that a prerequisite belongs in `motte block` rather than in prose, and
+  that notes are where the reasoning goes. It sits between markers, so nothing else in the file is
+  ever touched.
+- **`motte doctor` warns when a parent disagrees with its subtree**, in both directions: closed while
+  work under it is open, or open when everything under it has settled. Both mislead the progress
+  report and both were silent. It found four real cases in this repository the first time it ran.
+
+### Fixed
+
+- The web UI never said when it had lost the server. `EventSource` reconnects silently, and one tab
+  had logged 198 failed attempts while showing a board that looked current. It now says so, keeps
+  the data on screen, and re-reads on recovery — changes made during an outage produced events
+  nobody received.
+- `bun run dev:web` was entirely broken: the Host check compared ports, so Vite's proxy got a 403 on
+  every request. The port comparison defended nothing, since a rebinding attempt is caught by the
+  hostname.
+- `motte list`, `motte ready` and the MCP read tools each had their own copy of the state, label and
+  assignee filters. Three copies of "compare lowercased" is three chances for one of them to start
+  treating a label differently, with nothing to notice.
+
+### Notes
+
+- The event log records transitions only. `motte watch` therefore compares snapshots and uses the
+  log for attribution, rather than tailing it: notes are absent from the log by design, readiness is
+  derived, and a file edited by hand produces no event at all.
+- The project registry is a JSON file, not a database. It is a few dozen rows, and a file you can
+  read and repair by hand is the same bargain the issue format makes.
 
 ## 0.4.0
 

@@ -184,6 +184,6 @@ jobs:
             dist/release/*.gz
             dist/release/checksums.txt
           generate_release_notes: true
-          # Everything below 1.0 is a pre-release. The CLI, MCP server and web UI all work; the docs site
-          # and the published schemas the config files point at do not exist yet.
+          # 0.x shipped as pre-releases because the documentation site and the published schemas the
+          # config files point at did not exist yet. Both are live as of 1.0.0.
           prerelease: ${{ !startsWith(needs.build.outputs.tag, 'v1.') }}
