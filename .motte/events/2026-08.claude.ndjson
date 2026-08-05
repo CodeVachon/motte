@@ -47,3 +47,21 @@
 {"at":"2026-08-05T14:29:09Z","id":60,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Done"}
 {"at":"2026-08-05T14:45:25Z","id":45,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
 {"at":"2026-08-05T15:13:52Z","id":45,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
+{"at":"2026-08-05T15:49:57Z","id":83,"by":"claude","as":"agent","type":"created","title":"The agent loop: pick work, then claim it","state":"Todo"}
+{"at":"2026-08-05T15:49:57Z","id":84,"by":"claude","as":"agent","type":"created","title":"motte next — the single best issue to pick up","state":"Todo"}
+{"at":"2026-08-05T15:49:57Z","id":85,"by":"claude","as":"agent","type":"created","title":"motte claim — refuse the second agent rather than letting both start","state":"Todo"}
+{"at":"2026-08-05T15:49:57Z","id":86,"by":"claude","as":"agent","type":"created","title":"motte find — search the issue bodies, not just the frontmatter","state":"Todo"}
+{"at":"2026-08-05T15:49:58Z","id":87,"by":"claude","as":"agent","type":"created","title":"Search in the web UI","state":"Todo"}
+{"at":"2026-08-05T15:49:58Z","id":88,"by":"claude","as":"agent","type":"created","title":"Link issues to the commits that came from them","state":"Todo"}
+{"at":"2026-08-05T15:49:58Z","id":89,"by":"claude","as":"agent","type":"created","title":"doctor --fix for the findings that have one obvious repair","state":"Todo"}
+{"at":"2026-08-05T15:49:58Z","id":90,"by":"claude","as":"agent","type":"created","title":"motte merge — fold a duplicate issue into another","state":"Todo"}
+{"at":"2026-08-05T15:49:58Z","id":91,"by":"claude","as":"agent","type":"created","title":"watch --all, across every registered project","state":"Todo"}
+{"at":"2026-08-05T15:49:59Z","id":92,"by":"claude","as":"agent","type":"created","title":"install: Cursor, Gemini CLI and opencode","state":"Todo"}
+{"at":"2026-08-05T15:49:59Z","id":93,"by":"claude","as":"agent","type":"created","title":"Import from GitHub Issues","state":"Todo"}
+{"at":"2026-08-05T15:50:26Z","id":94,"by":"claude","as":"agent","type":"created","title":"Estimates and story points","state":"Todo"}
+{"at":"2026-08-05T15:50:26Z","id":94,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Cancelled"}
+{"at":"2026-08-05T15:50:27Z","id":95,"by":"claude","as":"agent","type":"created","title":"Enforced state transitions","state":"Todo"}
+{"at":"2026-08-05T15:50:27Z","id":95,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Cancelled"}
+{"at":"2026-08-05T15:50:27Z","id":96,"by":"claude","as":"agent","type":"created","title":"Authentication for motte serve on a network","state":"Todo"}
+{"at":"2026-08-05T15:50:28Z","id":96,"by":"claude","as":"agent","type":"state","from":"Todo","to":"Cancelled"}
+{"at":"2026-08-05T15:50:39Z","id":87,"by":"claude","as":"agent","type":"blocked","blocker":86}
