@@ -14,6 +14,8 @@ import {
     ENTRY,
     RETRY,
     SPAWN_TIMEOUT_MS,
+    committedProject,
+    commitAll,
     initialised,
     motte,
     pretendClaudeCodeInstalled,
@@ -640,6 +642,7 @@ describe("wiring", RETRY, () => {
             "next",
             "find",
             "claim",
+            "current",
             "release",
             "status",
             "tree",
@@ -1158,5 +1161,178 @@ describe("find", RETRY, () => {
 
         expect(found.count).toBe(2);
         expect(found.projects.map((entry) => entry.name).sort()).toEqual(["First", "Second"]);
+    });
+});
+
+/**
+ * Linking issues to the commits that came from them.
+ *
+ * Against a real repository with real commits, including one made through the installed hook. The hook is a
+ * shell script git executes — nothing short of running it proves it works, and a hook that fails blocks a
+ * commit, which is the failure mode worth being sure about.
+ */
+describe("issues and commits", RETRY, () => {
+    it("lists the commits that mention an issue", async () => {
+        const root = await committedProject();
+        await motte(root, ["add", "Write the parser"]);
+        commitAll(root, "Start the parser (#0001)");
+
+        const shown = (await motte(root, ["show", "1", "--json"])).json<{
+            commits: { subject: string; shortSha: string }[];
+        }>();
+
+        expect(shown.commits.map((commit) => commit.subject)).toContain("Start the parser (#0001)");
+    });
+
+    it("interleaves them with the transitions in the log", async () => {
+        const root = await committedProject();
+        await motte(root, ["add", "Write the parser"]);
+        commitAll(root, "Start the parser (#0001)");
+        await motte(root, ["move", "1", "in progress"]);
+
+        const run = await motte(root, ["log", "1"]);
+
+        expect(run.stdout).toContain("git ");
+        expect(run.stdout).toContain("Start the parser");
+        expect(run.stdout).toContain("Todo → In Progress");
+    });
+
+    it("can be told to leave the commits out", async () => {
+        const root = await committedProject();
+        await motte(root, ["add", "Write the parser"]);
+        commitAll(root, "Start the parser (#0001)");
+
+        const run = await motte(root, ["log", "1", "--no-commits"]);
+
+        expect(run.stdout).not.toContain("Start the parser");
+    });
+
+    it("says nothing about commits in a project that is not a repository", async () => {
+        const root = await initialised();
+        await motte(root, ["add", "No git here"]);
+
+        const shown = (await motte(root, ["show", "1", "--json"])).json<{ commits: unknown[] }>();
+
+        expect(shown.commits).toEqual([]);
+    });
+
+    describe("motte current", () => {
+        it("names the one issue you have claimed", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "Mine"]);
+            await motte(root, ["claim", "1"]);
+
+            expect((await motte(root, ["current"])).stdout.trim()).toBe("#0001");
+        });
+
+        /** Two claimed issues means the hook cannot know which a commit is for, so it says nothing. */
+        it("says nothing when two are claimed, rather than guessing", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "One"]);
+            await motte(root, ["add", "Two"]);
+            await motte(root, ["claim", "1"]);
+            await motte(root, ["claim", "2"]);
+
+            const run = await motte(root, ["current"]);
+
+            expect(run.stdout.trim()).toBe("");
+            // But a caller that wants the ambiguity can see it.
+            expect((await motte(root, ["current", "--json"])).json<{ count: number }>().count).toBe(
+                2
+            );
+        });
+
+        it("says nothing when nothing is claimed", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "Unclaimed"]);
+
+            expect((await motte(root, ["current"])).stdout.trim()).toBe("");
+        });
+
+        it("ignores work claimed by somebody else", async () => {
+            const root = await initialised();
+            await motte(root, ["add", "Theirs"]);
+            await motte(root, ["claim", "1"], { MOTTE_AGENT: "atlas" });
+
+            expect((await motte(root, ["current"])).stdout.trim()).toBe("");
+        });
+    });
+
+    describe("the commit hook", () => {
+        it("stamps a real commit with the claimed issue", async () => {
+            const root = await committedProject();
+            await motte(root, ["add", "Wire the hook"]);
+            await motte(root, ["claim", "1"]);
+            expect((await motte(root, ["install", "--hooks", "--agent", "claude-code"])).code).toBe(
+                0
+            );
+
+            // A `motte` the hook can call by name, since it runs as a plain shell script.
+            const bin = join(root, "hookbin");
+            mkdirSync(bin, { recursive: true });
+            const shim = join(bin, "motte");
+            writeFileSync(shim, `#!/bin/sh\nexec bun ${ENTRY} "$@"\n`, "utf8");
+            spawnSync("chmod", ["+x", shim]);
+
+            writeFileSync(join(root, "code.txt"), "content", "utf8");
+            spawnSync("git", ["add", "-A"], { cwd: root });
+            const committed = spawnSync("git", ["commit", "-m", "Add some code"], {
+                cwd: root,
+                encoding: "utf8",
+                timeout: SPAWN_TIMEOUT_MS,
+                env: {
+                    ...process.env,
+                    ...sandboxEnv(root),
+                    PATH: `${bin}:${process.env.PATH ?? ""}`,
+                    MOTTE_AUTHOR: "Test User"
+                }
+            });
+
+            // A hook that fails blocks the commit, so the exit status is half of what is being asserted.
+            expect(committed.status).toBe(0);
+
+            const message = spawnSync("git", ["log", "-1", "--format=%B"], {
+                cwd: root,
+                encoding: "utf8"
+            }).stdout;
+            expect(message).toContain("Refs: #0001");
+        });
+
+        it("leaves a message that already names an issue alone", async () => {
+            const root = await committedProject();
+            await motte(root, ["add", "Wire the hook"]);
+            await motte(root, ["claim", "1"]);
+            await motte(root, ["install", "--hooks", "--agent", "claude-code"]);
+
+            writeFileSync(join(root, "code.txt"), "content", "utf8");
+            spawnSync("git", ["add", "-A"], { cwd: root });
+            spawnSync("git", ["commit", "-m", "Fix it for #0001"], {
+                cwd: root,
+                encoding: "utf8",
+                timeout: SPAWN_TIMEOUT_MS,
+                env: { ...process.env, ...sandboxEnv(root) }
+            });
+
+            const message = spawnSync("git", ["log", "-1", "--format=%B"], {
+                cwd: root,
+                encoding: "utf8"
+            }).stdout;
+            expect(message.match(/#0001/g)).toHaveLength(1);
+        });
+
+        it("is removed by uninstall, and only motte's part of it", async () => {
+            const root = await committedProject();
+            const hook = join(root, ".git", "hooks", "prepare-commit-msg");
+            writeFileSync(hook, "#!/bin/sh\necho theirs\n", "utf8");
+
+            await motte(root, ["install", "--hooks", "--agent", "claude-code"]);
+            expect(readFileSync(hook, "utf8")).toContain("motte:start");
+
+            await motte(root, ["uninstall", "--keep-cli", "--yes"]);
+
+            const left = readFileSync(hook, "utf8");
+            expect(left).toContain("echo theirs");
+            expect(left).not.toContain("motte:start");
+        });
     });
 });

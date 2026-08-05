@@ -282,6 +282,35 @@ because somebody else closed its blocker.
 `motte serve` covers the browser; this is for the window already open beside your editor. In a pipe it
 drops the dashboard and prints a line per change instead, so redirecting it works.
 
+### Issues and the code that came out of them
+
+```bash
+motte show 42                # lists the commits whose messages mention #0042
+motte log 42                 # those commits interleaved with the transitions and notes
+motte install --hooks        # stamp commits with the issue you have claimed
+motte current                # the issue you have claimed, if there is exactly one
+```
+
+git already held the answer to "what came of this issue" — the convention is `#0042` or `Closes #0042` in a
+commit message — and motte could not see it, so the two records this project treats as one system had no
+join. `motte log 42` now reads as one story:
+
+```
+2026-08-05 15:49  #0084      created "motte next — the single best issue to pick up"   claude (agent)
+2026-08-05 15:51  #0084 git  798643f Plan the work after 1.0                          Christopher Vachon
+2026-08-05 16:02  #0084      Todo → In Progress                                       claude (agent)
+2026-08-05 16:20  #0084 note rankReady in core, lexicographic rather than weighted…    claude (agent)
+2026-08-05 16:21  #0084 git  df11b61 Add motte next and motte claim                    Christopher Vachon
+```
+
+`--hooks` installs a `prepare-commit-msg` hook that appends `Refs: #0042` when you have claimed exactly one
+issue and the message does not already name one. Opt-in, because a hook runs on every commit anybody makes in
+the clone. It merges with a hook you already have, never fails a commit, and `motte uninstall` removes
+exactly motte's part of it.
+
+It writes `Refs: #0042` rather than a bare `#0042` for a reason worth knowing: git strips lines starting with
+`#` from a commit message, so the bare form would silently vanish from an interactive commit.
+
 ### Pruning old work
 
 ```bash
@@ -396,7 +425,7 @@ motte mcp --print-config    # or paste the snippet yourself
 ```
 
 `motte init` does this for you; `motte install` is for a project created before it did, or for wiring up
-an agent installed later.
+an agent installed later. `--hooks` additionally installs the commit hook described above.
 
 Alongside the MCP config it writes motte's section of `AGENTS.md`, between markers. Wiring the server tells
 an agent that motte exists; it does not tell it how the project is meant to be worked — that `ready` is the

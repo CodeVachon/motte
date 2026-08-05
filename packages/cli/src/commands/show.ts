@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { blocks, isReady, openBlockers, subtreeReport } from "@motte/core";
+import { blocks, commitsFor, isReady, openBlockers, subtreeReport } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import { dim, heading, issueLine, paintId, paintState, progressLine, warn } from "../ui/format.js";
 
@@ -40,7 +40,10 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
                     state: blocked.state
                 })),
                 children: children.map((child) => issueJson(child)),
-                progress: children.length === 0 ? null : subtreeReport(config, all, issue.id)
+                progress: children.length === 0 ? null : subtreeReport(config, all, issue.id),
+                // Empty in a directory that is not a repository, which is a fact about the directory
+                // rather than an error worth reporting.
+                commits: commitsFor(config.root, issue.id)
             });
             return;
         }
@@ -97,6 +100,22 @@ export const showCommand: CommandModule<{}, ShowArgs> = {
             for (const note of issue.notes) {
                 const badge = note.author.type === "agent" ? "agent" : "user";
                 out.write(`\n${dim(`${note.at}  ${note.author.name} (${badge})`)}\n${note.body}\n`);
+            }
+        }
+
+        /**
+         * The commits that mention it.
+         *
+         * Last, under the notes, because it is the answer to "what came of this" — and it is the one part of
+         * an issue's story that lives in the other record entirely.
+         */
+        const commits = commitsFor(config.root, issue.id);
+        if (commits.length > 0) {
+            out.write(`\n${heading(`Commits (${commits.length})`)}\n\n`);
+            for (const commit of commits) {
+                out.write(
+                    `  ${dim(commit.shortSha)}  ${dim(commit.at.slice(0, 10))}  ${commit.subject}\n`
+                );
             }
         }
 

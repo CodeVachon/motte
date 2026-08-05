@@ -12,6 +12,7 @@ import {
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { claimCommand, releaseCommand } from "./commands/claim.js";
+import { currentCommand } from "./commands/current.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { findCommand } from "./commands/find.js";
 import { projectsCommand } from "./commands/projects.js";
@@ -166,6 +167,7 @@ function buildCli(argv: string[]) {
         .command(findCommand)
         .command(claimCommand)
         .command(releaseCommand)
+        .command(currentCommand)
         .command(statusCommand)
         .command(treeCommand)
         .command(logCommand)

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { findConfigFile } from "@motte/core";
 import {
@@ -10,7 +10,9 @@ import {
     mergeCodexToml,
     mergeMcpJson
 } from "./agents.js";
-import { AGENTS_FILENAME, hasBrokenMarkers, mergeAgentsMd } from "./instructions.js";
+import { AGENTS_FILENAME, AGENTS_MARKERS, mergeAgentsMd } from "./instructions.js";
+import { HOOK_MARKERS, HOOK_NAME, mergeHook } from "./hooks.js";
+import { hasBrokenMarkers } from "./markedBlock.js";
 import { rememberWiring, type AgentId, type Scope } from "./record.js";
 
 /**
@@ -200,7 +202,7 @@ function instructionsAction(root: string): Action {
         apply: () => {
             const existing = read(path);
 
-            if (existing !== undefined && hasBrokenMarkers(existing)) {
+            if (existing !== undefined && hasBrokenMarkers(existing, AGENTS_MARKERS)) {
                 throw new AgentConfigError(
                     `${path} has a motte start marker with no matching end marker, so it was left ` +
                         `alone. Repair or delete the markers and run this again.`
@@ -215,12 +217,55 @@ function instructionsAction(root: string): Action {
     };
 }
 
+/**
+ * The commit hook.
+ *
+ * Under `.git/hooks`, which is not a tracked file, so this is per-clone rather than per-project — the same
+ * status as the agent configs and for the same reason: it describes this machine's setup.
+ */
+function hookAction(root: string): Action {
+    const path = join(root, ".git", "hooks", HOOK_NAME);
+
+    return {
+        agent: "git-hook",
+        label: "Commit hook",
+        scope: "project",
+        path,
+        apply: () => {
+            if (!existsSync(join(root, ".git"))) {
+                throw new AgentConfigError(
+                    `${root} is not a git repository, so there is nowhere to put a commit hook.`
+                );
+            }
+
+            const existing = read(path);
+
+            if (existing !== undefined && hasBrokenMarkers(existing, HOOK_MARKERS)) {
+                throw new AgentConfigError(
+                    `${path} has a motte start marker with no matching end marker, so it was left alone.`
+                );
+            }
+
+            const merged = mergeHook(existing);
+            if (!merged.unchanged) {
+                put(path, merged.content);
+                // Unexecutable hooks are ignored silently by git, which is the worst way for this to fail.
+                chmodSync(path, 0o755);
+            }
+
+            return { changed: !merged.unchanged, created: merged.created };
+        }
+    };
+}
+
 export interface PlanOptions {
     scope: Scope;
     /** Only this agent. Undefined means every detected one. */
     agent?: string | undefined;
     /** Skip the AGENTS.md block. */
     withoutInstructions?: boolean;
+    /** Also install the prepare-commit-msg hook. Opt-in: a hook runs on everybody's commits. */
+    withHooks?: boolean;
     /** The project to write into. Undefined discovers one by walking up from the working directory. */
     root?: string | undefined;
 }
@@ -259,6 +304,10 @@ export function planWiring(options: PlanOptions): WiringPlan {
     const root = resolveRoot(options.root);
     if (options.withoutInstructions !== true && root !== undefined) {
         actions.push(instructionsAction(root));
+    }
+
+    if (options.withHooks === true && root !== undefined) {
+        actions.push(hookAction(root));
     }
 
     return { actions };

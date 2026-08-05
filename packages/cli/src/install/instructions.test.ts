@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-    BLOCK_END,
-    BLOCK_START,
-    hasBrokenMarkers,
+    AGENTS_MARKERS,
     instructionBlock,
     mergeAgentsMd,
     removeFromAgentsMd
 } from "./instructions.js";
+import { hasBrokenMarkers } from "./markedBlock.js";
 
 /**
  * The AGENTS.md block.
@@ -32,8 +31,8 @@ describe("mergeAgentsMd", () => {
 
         expect(merged.created).toBe(true);
         expect(merged.content.startsWith("# ")).toBe(true);
-        expect(merged.content).toContain(BLOCK_START);
-        expect(merged.content).toContain(BLOCK_END);
+        expect(merged.content).toContain(AGENTS_MARKERS.start);
+        expect(merged.content).toContain(AGENTS_MARKERS.end);
         expect(merged.content).toContain("motte ready");
     });
 
@@ -51,7 +50,7 @@ describe("mergeAgentsMd", () => {
         const merged = mergeAgentsMd(EXISTING);
 
         expect(merged.content.indexOf("# Contributing agents")).toBeLessThan(
-            merged.content.indexOf(BLOCK_START)
+            merged.content.indexOf(AGENTS_MARKERS.start)
         );
     });
 
@@ -64,18 +63,18 @@ describe("mergeAgentsMd", () => {
     });
 
     it("replaces an older block in place rather than adding a second one", () => {
-        const stale = `${EXISTING}\n${BLOCK_START}\n\n## Tracking work with motte\n\nSomething from an older version.\n\n${BLOCK_END}\n`;
+        const stale = `${EXISTING}\n${AGENTS_MARKERS.start}\n\n## Tracking work with motte\n\nSomething from an older version.\n\n${AGENTS_MARKERS.end}\n`;
 
         const merged = mergeAgentsMd(stale);
 
         expect(merged.unchanged).toBe(false);
         expect(merged.content).not.toContain("Something from an older version");
-        expect(merged.content.split(BLOCK_START)).toHaveLength(2);
+        expect(merged.content.split(AGENTS_MARKERS.start)).toHaveLength(2);
         expect(merged.content).toContain("Tabs, and we will not be discussing it.");
     });
 
     it("leaves whatever follows the block alone when replacing it", () => {
-        const around = `Before.\n\n${BLOCK_START}\nold\n${BLOCK_END}\n\nAfter.\n`;
+        const around = `Before.\n\n${AGENTS_MARKERS.start}\nold\n${AGENTS_MARKERS.end}\n\nAfter.\n`;
 
         const merged = mergeAgentsMd(around);
 
@@ -92,7 +91,7 @@ describe("removeFromAgentsMd", () => {
         expect(removed.absent).toBe(false);
         expect(removed.empty).toBe(false);
         expect(removed.content).not.toContain("motte ready");
-        expect(removed.content).not.toContain(BLOCK_START);
+        expect(removed.content).not.toContain(AGENTS_MARKERS.start);
         expect(removed.content).toContain("Tabs, and we will not be discussing it.");
     });
 
@@ -124,11 +123,11 @@ describe("half-written markers", () => {
      * they had written after it — so this is reported and the file is left alone.
      */
     it("is detectable, so the caller can refuse instead of guessing", () => {
-        const broken = `${EXISTING}\n${BLOCK_START}\nsomething half-deleted\n`;
+        const broken = `${EXISTING}\n${AGENTS_MARKERS.start}\nsomething half-deleted\n`;
 
-        expect(hasBrokenMarkers(broken)).toBe(true);
-        expect(hasBrokenMarkers(mergeAgentsMd(EXISTING).content)).toBe(false);
-        expect(hasBrokenMarkers(EXISTING)).toBe(false);
+        expect(hasBrokenMarkers(broken, AGENTS_MARKERS)).toBe(true);
+        expect(hasBrokenMarkers(mergeAgentsMd(EXISTING).content, AGENTS_MARKERS)).toBe(false);
+        expect(hasBrokenMarkers(EXISTING, AGENTS_MARKERS)).toBe(false);
     });
 });
 

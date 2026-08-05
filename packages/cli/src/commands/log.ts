@@ -1,5 +1,12 @@
 import type { CommandModule } from "yargs";
-import { eventsFor, timeInState, type Config, type Event, type Issue } from "@motte/core";
+import {
+    commitsFor,
+    eventsFor,
+    timeInState,
+    type Config,
+    type Event,
+    type Issue
+} from "@motte/core";
 import { context, emitJson } from "../context.js";
 import { dim, heading, paintId, paintState } from "../ui/format.js";
 
@@ -57,7 +64,7 @@ interface Entry {
     id: number;
     by: string;
     as: "user" | "agent";
-    kind: "event" | "note";
+    kind: "event" | "note" | "commit";
     summary: string;
 }
 
@@ -90,6 +97,25 @@ function describeEvent(event: Event): string {
  * Merged at read time rather than stored twice: notes carry their own timestamp and author on the
  * issue, so recording them as events too would mean two records that could disagree.
  */
+/**
+ * Commits mentioning an issue, as timeline entries.
+ *
+ * The point of interleaving them: an issue's history is transitions, notes and the code that came out of it,
+ * and reading two of those three in one place and the third with `git log --grep` is the gap #0088 named.
+ */
+function commitEntries(cwd: string, id: number, since?: string): Entry[] {
+    return commitsFor(cwd, id)
+        .filter((commit) => since === undefined || commit.at >= since)
+        .map((commit) => ({
+            at: commit.at,
+            id,
+            by: commit.author,
+            as: "user" as const,
+            kind: "commit" as const,
+            summary: `${commit.shortSha} ${commit.subject}`
+        }));
+}
+
 function timeline(events: Event[], issues: Issue[], since?: string): Entry[] {
     const entries: Entry[] = events.map((event) => ({
         at: event.at,
@@ -126,6 +152,7 @@ interface LogArgs {
     since?: string;
     limit?: number;
     notes?: boolean;
+    commits?: boolean;
     pruned?: boolean;
     json?: boolean;
 }
@@ -149,6 +176,12 @@ export const logCommand: CommandModule<{}, LogArgs> = {
                 type: "boolean",
                 default: true,
                 describe: "Include notes alongside transitions (--no-notes for transitions only)"
+            })
+            .option("commits", {
+                type: "boolean",
+                default: true,
+                describe:
+                    "For one issue, include the commits that mention it (--no-commits to skip)"
             })
             .option("pruned", {
                 type: "boolean",
@@ -200,6 +233,14 @@ export const logCommand: CommandModule<{}, LogArgs> = {
             since
         );
 
+        // Only for one issue: `git log --grep` per issue across a whole backlog would be one git process
+        // per issue, and the timeline of everything is already the event log's job.
+        if (target !== undefined && args.commits !== false) {
+            entries = [...entries, ...commitEntries(config.root, target.id, since)].sort((a, b) =>
+                a.at < b.at ? -1 : a.at > b.at ? 1 : 0
+            );
+        }
+
         if (args.limit !== undefined && args.limit > 0) entries = entries.slice(-args.limit);
 
         if (args.json === true) {
@@ -235,7 +276,12 @@ export const logCommand: CommandModule<{}, LogArgs> = {
 
         for (const entry of entries) {
             const who = entry.as === "agent" ? dim(`${entry.by} (agent)`) : dim(entry.by);
-            const marker = entry.kind === "note" ? dim("note") : "    ";
+            const marker =
+                entry.kind === "note"
+                    ? dim("note")
+                    : entry.kind === "commit"
+                      ? dim("git ")
+                      : "    ";
             out.write(
                 `${dim(entry.at.slice(0, 16).replace("T", " "))}  ${paintId(entry.id)} ` +
                     `${marker} ${truncate(entry.summary, 60).padEnd(60)} ${who}\n`

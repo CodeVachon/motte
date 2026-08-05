@@ -2,11 +2,11 @@ import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
 
 /**
- * The narrow slice of git that pruning needs.
+ * The narrow slice of git motte needs.
  *
- * Pruning removes committed files, so the tombstone it leaves has to point at a commit that actually
- * contains them. Everything here exists to make that pointer trustworthy, or to refuse when it cannot
- * be.
+ * Most of it exists for pruning: that removes committed files, so the tombstone it leaves has to point at a
+ * commit that actually contains them, and everything here makes that pointer trustworthy or refuses when it
+ * cannot be. `commitsFor` is the other reason — the join between an issue and the code that came out of it.
  */
 
 export class GitError extends Error {
@@ -140,4 +140,83 @@ export function commitBeforeDeletion(cwd: string, path: string): string | undefi
 export function repoRelative(cwd: string, absolutePath: string): string {
     const top = git(cwd, ["rev-parse", "--show-toplevel"]);
     return relative(top, absolutePath).split("\\").join("/");
+}
+
+/** One commit, as much of it as an issue view needs. */
+export interface Commit {
+    sha: string;
+    /** Abbreviated, which is what a person reads and what `git show` accepts. */
+    shortSha: string;
+    subject: string;
+    /**
+     * UTC, to the second, matching the timestamps in issue frontmatter and the event log.
+     *
+     * Converted rather than passed through: git reports the author's local offset, and interleaving that
+     * with UTC timestamps put commits hours away from where they belonged — a commit appeared four hours
+     * before the issue it mentions was created, which read as impossible rather than as a timezone.
+     */
+    at: string;
+    author: string;
+}
+
+/** git's `%aI` with its offset, as UTC to the second. */
+function toUtc(iso: string): string {
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return iso;
+
+    return `${parsed.toISOString().slice(0, 19)}Z`;
+}
+
+/**
+ * Field and record separators for `git log --format`.
+ *
+ * Unit and record separators rather than a printable delimiter: a commit subject can contain any character
+ * somebody can type, and splitting on a pipe or a tab would truncate a real message eventually.
+ */
+const FIELD = "\u001f";
+const RECORD = "\u001e";
+
+/**
+ * Commits that mention an issue.
+ *
+ * git already holds the answer to "what code came out of this issue" — the convention is `#0042` or
+ * `Closes #0042` in the message — and until this, motte could not see it. The two records the project
+ * treats as one system had no join.
+ *
+ * Both spellings are matched, padded and not, because a person typing by hand writes `#42` and the
+ * zero-padded form is what motte prints. The trailing guard stops `#42` matching `#421`.
+ *
+ * Returns nothing rather than throwing when there is no repository, no commits, or no git at all: an issue
+ * view must render in a directory that was never a repository.
+ */
+export function commitsFor(cwd: string, id: number, limit = 20): Commit[] {
+    if (!isRepository(cwd) || !hasCommits(cwd)) return [];
+
+    try {
+        const output = git(cwd, [
+            "log",
+            `--max-count=${limit}`,
+            "--extended-regexp",
+            `--grep=#0*${id}([^0-9]|$)`,
+            `--format=%H${FIELD}%h${FIELD}%s${FIELD}%aI${FIELD}%an${RECORD}`
+        ]);
+
+        return output
+            .split(RECORD)
+            .map((record) => record.trim())
+            .filter((record) => record.length > 0)
+            .map((record) => {
+                const [sha, shortSha, subject, at, author] = record.split(FIELD);
+                return {
+                    sha: sha ?? "",
+                    shortSha: shortSha ?? "",
+                    subject: subject ?? "",
+                    at: at === undefined ? "" : toUtc(at),
+                    author: author ?? ""
+                };
+            });
+    } catch {
+        // A search that cannot run is not a failure of the command asking for it.
+        return [];
+    }
 }

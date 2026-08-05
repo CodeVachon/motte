@@ -1,4 +1,5 @@
 import type { MergeResult, RemoveResult } from "./agents.js";
+import { hasBrokenMarkers as brokenMarkers, mergeBlock, removeBlock } from "./markedBlock.js";
 
 /**
  * The instructions motte leaves for the agents it wires up.
@@ -14,8 +15,11 @@ import type { MergeResult, RemoveResult } from "./agents.js";
  * Pure, like `agents.ts`: takes the current contents and returns the new ones.
  */
 
-export const BLOCK_START = "<!-- motte:start -->";
-export const BLOCK_END = "<!-- motte:end -->";
+/** Everything between these is motte's; everything outside them is the project's. */
+export const AGENTS_MARKERS = { start: "<!-- motte:start -->", end: "<!-- motte:end -->" };
+
+const BLOCK_START = AGENTS_MARKERS.start;
+const BLOCK_END = AGENTS_MARKERS.end;
 
 export const AGENTS_FILENAME = "AGENTS.md";
 
@@ -72,79 +76,13 @@ ${BLOCK_END}
 `;
 }
 
-interface Bounds {
-    start: number;
-    end: number;
-}
-
-/** Where motte's block sits, if it is there at all. */
-function findBlock(content: string): Bounds | undefined {
-    const start = content.indexOf(BLOCK_START);
-    if (start === -1) return undefined;
-
-    const end = content.indexOf(BLOCK_END, start);
-    // A start with no end means someone edited the markers. Treating that as "no block" would append a
-    // second one, so it is reported instead and the file is left alone.
-    if (end === -1) return undefined;
-
-    return { start, end: end + BLOCK_END.length };
-}
-
-/** True when the file has a start marker whose end marker is missing, so it cannot be edited safely. */
-export function hasBrokenMarkers(content: string): boolean {
-    return content.includes(BLOCK_START) && !content.includes(BLOCK_END);
-}
+/** The markers, exported because `install` and `uninstall` both look for them. */
+const OPTIONS = { preamble: FILE_HEADING };
 
 export function mergeAgentsMd(existing: string | undefined): MergeResult {
-    const block = instructionBlock();
-
-    if (existing === undefined) {
-        return { content: `${FILE_HEADING}\n\n${block}`, created: true, unchanged: false };
-    }
-
-    const bounds = findBlock(existing);
-
-    if (bounds === undefined) {
-        // Appended, never prepended: the top of this file is where a project puts what matters most, and
-        // that judgement is not motte's to overrule.
-        const padded = existing.endsWith("\n\n")
-            ? existing
-            : existing.endsWith("\n")
-              ? `${existing}\n`
-              : `${existing}\n\n`;
-
-        return { content: `${padded}${block}`, created: false, unchanged: false };
-    }
-
-    const current = existing.slice(bounds.start, bounds.end);
-    if (current.trim() === block.trim()) {
-        return { content: existing, created: false, unchanged: true };
-    }
-
-    // An older block is replaced in place rather than appended to, so upgrading never leaves two.
-    return {
-        content: `${existing.slice(0, bounds.start)}${block.trim()}${existing.slice(bounds.end)}`,
-        created: false,
-        unchanged: false
-    };
+    return mergeBlock(existing, instructionBlock(), AGENTS_MARKERS, OPTIONS);
 }
 
 export function removeFromAgentsMd(existing: string): RemoveResult {
-    const bounds = findBlock(existing);
-
-    if (bounds === undefined) return { content: existing, empty: false, absent: true };
-
-    const content = `${existing.slice(0, bounds.start)}${existing.slice(bounds.end)}`
-        .replace(/\n{3,}/g, "\n\n")
-        .trimEnd();
-
-    // "Empty" means nothing but the heading motte itself would have written is left, so the file only
-    // exists because motte created it.
-    const remaining = content.replace(FILE_HEADING, "").trim();
-
-    return {
-        content: content.length === 0 ? "" : `${content}\n`,
-        empty: remaining.length === 0,
-        absent: false
-    };
+    return removeBlock(existing, AGENTS_MARKERS, OPTIONS);
 }

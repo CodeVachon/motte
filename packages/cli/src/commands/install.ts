@@ -13,6 +13,7 @@ interface InstallArgs {
     agent?: string;
     scope?: string;
     instructions?: boolean;
+    hooks?: boolean;
     dryRun?: boolean;
     json?: boolean;
 }
@@ -38,6 +39,10 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
                 default: true,
                 describe: `Also write motte's section of AGENTS.md (--no-instructions to skip)`
             })
+            .option("hooks", {
+                type: "boolean",
+                describe: "Also install a prepare-commit-msg hook that stamps the issue you claimed"
+            })
             .option("dry-run", { type: "boolean", describe: "Show what would be written" })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
@@ -45,7 +50,8 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
         const plan = planWiring({
             scope,
             agent: args.agent,
-            withoutInstructions: args.instructions === false
+            withoutInstructions: args.instructions === false,
+            withHooks: args.hooks === true
         });
 
         if (plan.actions.length === 0) {

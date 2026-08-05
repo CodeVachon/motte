@@ -147,6 +147,8 @@ export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/js
 
 export { filterIssues, matchesFilter, type FilterOptions, type IssueFilter } from "./filter.js";
 
+export { commitsFor, type Commit } from "./git.js";
+
 export { rankReady, type Ranked, type RankOptions, type RankSignals } from "./next.js";
 
 export {

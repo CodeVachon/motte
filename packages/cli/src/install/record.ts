@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { dirname, join } from "node:path";
 import { timestamp } from "@motte/core";
 import { removeFromCodexToml, removeFromMcpJson } from "./agents.js";
+import { removeFromHook } from "./hooks.js";
 import { removeFromAgentsMd } from "./instructions.js";
 
 /**
  * What was wired. `agents-md` is not an agent but the AGENTS.md block, which every supported agent
  * reads — recording it the same way is what lets `uninstall` remove exactly that block.
  */
-export type AgentId = "claude-code" | "codex" | "agents-md";
+export type AgentId = "claude-code" | "codex" | "agents-md" | "git-hook";
 export type Scope = "project" | "user" | "local";
 
 export interface WiringEntry {
@@ -103,11 +104,16 @@ export function unwire(entry: WiringEntry): UnwireOutcome {
     try {
         const existing = readFileSync(entry.path, "utf8");
 
-        const outcome = entry.path.endsWith(".toml")
-            ? removeFromCodexToml(existing)
-            : entry.path.endsWith(".md")
-              ? removeFromAgentsMd(existing)
-              : removeFromMcpJson(existing, entry.path);
+        // Dispatched on what was written rather than on the path, for the hook: it has no extension, and
+        // adding a filename check here would break the moment git renamed a hook.
+        const outcome =
+            entry.agent === "git-hook"
+                ? removeFromHook(existing)
+                : entry.path.endsWith(".toml")
+                  ? removeFromCodexToml(existing)
+                  : entry.path.endsWith(".md")
+                    ? removeFromAgentsMd(existing)
+                    : removeFromMcpJson(existing, entry.path);
 
         if (outcome.absent) return { entry, result: "not-found" };
 
