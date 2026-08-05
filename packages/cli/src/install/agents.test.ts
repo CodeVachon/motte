@@ -3,8 +3,10 @@ import {
     AgentConfigError,
     mergeCodexToml,
     mergeMcpJson,
+    mergeOpencodeJson,
     removeFromCodexToml,
-    removeFromMcpJson
+    removeFromMcpJson,
+    removeFromOpencodeJson
 } from "./agents.js";
 
 describe("mergeMcpJson", () => {
@@ -28,6 +30,17 @@ describe("mergeMcpJson", () => {
 
         expect(Object.keys(merged.mcpServers).sort()).toEqual(["motte", "sentry"]);
         expect(merged.mcpServers.sentry).toEqual({ command: "sentry-mcp", args: ["--stdio"] });
+    });
+
+    /**
+     * A file somebody created and left blank. `JSON.parse("")` throws, so this used to be reported as an
+     * unparseable config and refused — careful in the wrong direction, since there is nothing to lose.
+     */
+    it("fills in a file that exists but is empty", () => {
+        const merged = mergeMcpJson("   \n");
+
+        expect(merged.unchanged).toBe(false);
+        expect(JSON.parse(merged.content).mcpServers.motte).toBeDefined();
     });
 
     it("keeps unrelated top-level keys", () => {
@@ -213,5 +226,111 @@ describe("removeFromCodexToml", () => {
         const restored = removeFromCodexToml(mergeCodexToml(original).content).content;
 
         expect(restored.trim()).toBe(original.trim());
+    });
+});
+
+/**
+ * opencode, which is the target that does not fit the others.
+ *
+ * Its servers live under `mcp` rather than `mcpServers`, and an entry takes the whole command line as one
+ * array with an explicit `type` and `enabled`. Reusing the `mcpServers` writer would have produced a file
+ * opencode parses happily and then ignores — a success message and no working server.
+ */
+describe("mergeOpencodeJson", () => {
+    it("writes the shape opencode actually reads", () => {
+        const result = mergeOpencodeJson(undefined);
+
+        expect(result.created).toBe(true);
+        expect(JSON.parse(result.content)).toEqual({
+            $schema: "https://opencode.ai/config.json",
+            mcp: { motte: { type: "local", command: ["motte", "mcp"], enabled: true } }
+        });
+    });
+
+    it("keeps other servers and the rest of the config", () => {
+        const existing = JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            theme: "tokyonight",
+            model: "anthropic/claude-opus-5",
+            mcp: { weather: { type: "local", command: ["weather-mcp"], enabled: true } }
+        });
+
+        const merged = JSON.parse(mergeOpencodeJson(existing).content) as {
+            theme: string;
+            model: string;
+            mcp: Record<string, unknown>;
+        };
+
+        expect(merged.theme).toBe("tokyonight");
+        expect(merged.model).toBe("anthropic/claude-opus-5");
+        expect(Object.keys(merged.mcp).sort()).toEqual(["motte", "weather"]);
+    });
+
+    /** Never added to a file somebody else wrote: motte only writes `$schema` in a file it creates. */
+    it("does not add a schema to a config that had none", () => {
+        const merged = JSON.parse(
+            mergeOpencodeJson(JSON.stringify({ theme: "gruvbox" })).content
+        ) as Record<string, unknown>;
+
+        expect(merged.$schema).toBeUndefined();
+        expect(merged.theme).toBe("gruvbox");
+    });
+
+    it("reports an identical entry as unchanged, so re-running writes nothing", () => {
+        const once = mergeOpencodeJson(undefined);
+
+        expect(mergeOpencodeJson(once.content)).toMatchObject({ unchanged: true });
+    });
+
+    it("treats an empty file as one to fill in rather than one to parse", () => {
+        expect(mergeOpencodeJson("   \n").unchanged).toBe(false);
+        expect(JSON.parse(mergeOpencodeJson("   \n").content).mcp.motte).toBeDefined();
+    });
+
+    it("refuses a config it cannot parse rather than overwriting it", () => {
+        expect(() => mergeOpencodeJson("{ not json", "opencode.json")).toThrow(AgentConfigError);
+    });
+});
+
+describe("removeFromOpencodeJson", () => {
+    it("takes motte out and leaves everything else", () => {
+        const existing = mergeOpencodeJson(
+            JSON.stringify({
+                theme: "gruvbox",
+                mcp: { weather: { type: "local", command: ["weather-mcp"], enabled: true } }
+            })
+        ).content;
+
+        const removed = removeFromOpencodeJson(existing);
+        const config = JSON.parse(removed.content) as {
+            theme: string;
+            mcp: Record<string, unknown>;
+        };
+
+        expect(removed.absent).toBe(false);
+        expect(removed.empty).toBe(false);
+        expect(config.theme).toBe("gruvbox");
+        expect(Object.keys(config.mcp)).toEqual(["weather"]);
+    });
+
+    /** So `uninstall` can delete a file that exists only because motte created it. */
+    it("reports a config that held nothing but motte as empty", () => {
+        expect(removeFromOpencodeJson(mergeOpencodeJson(undefined).content).empty).toBe(true);
+    });
+
+    it("says so when motte was not configured there", () => {
+        const existing = JSON.stringify({ mcp: { weather: { type: "local" } } });
+
+        expect(removeFromOpencodeJson(existing)).toMatchObject({ absent: true, content: existing });
+    });
+
+    /**
+     * The bug this file's shape invites: `mcpServers` and `mcp` are one character apart, and a config
+     * written under the wrong key would be reported as installed and never loaded.
+     */
+    it("does not confuse itself with an mcpServers file", () => {
+        const cursorish = JSON.stringify({ mcpServers: { motte: { command: "motte" } } });
+
+        expect(removeFromOpencodeJson(cursorish).absent).toBe(true);
     });
 });

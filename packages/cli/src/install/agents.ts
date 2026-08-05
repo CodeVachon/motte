@@ -32,20 +32,37 @@ export interface RemoveResult {
     absent: boolean;
 }
 
-// ------------------------------------------------------------------ .mcp.json
+// ------------------------------------------------------- JSON config files
 
-interface McpJson {
-    mcpServers?: Record<string, unknown>;
+/**
+ * Four of the five targets keep their servers in a JSON object, and differ only in which key holds them
+ * and what an entry looks like inside it.
+ *
+ * One implementation with the differences as data, because fallow caught the alternative: writing
+ * `removeFromOpencodeJson` alongside `removeFromMcpJson` produced ten identical lines whose only
+ * disagreement was the string `"mcp"` versus `"mcpServers"`. Two copies of "is motte in here, and is there
+ * anything else worth keeping" is two places for that judgement to drift.
+ */
+interface JsonShape {
+    /** The object holding the servers. */
+    key: string;
+    /** motte's entry, in this file's shape. */
+    entry: Record<string, unknown>;
+    /** Written alongside the entry when motte creates the file, and never added to one it did not. */
+    preamble?: Record<string, unknown>;
+}
+
+interface ServerConfig {
     [key: string]: unknown;
 }
 
-function parseMcpJson(existing: string, path: string): McpJson {
+function parseConfig(existing: string, path: string): ServerConfig {
     try {
         const parsed = JSON.parse(existing) as unknown;
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
             throw new Error("expected a JSON object");
         }
-        return parsed as McpJson;
+        return parsed as ServerConfig;
     } catch (error) {
         // Refusing beats clobbering. Overwriting a config we cannot read would destroy whatever else
         // the user had configured there.
@@ -56,33 +73,43 @@ function parseMcpJson(existing: string, path: string): McpJson {
     }
 }
 
-export function mergeMcpJson(existing: string | undefined, path = ".mcp.json"): MergeResult {
-    const entry = { command: SERVER_COMMAND, args: SERVER_ARGS };
+function serversIn(config: ServerConfig, key: string): Record<string, unknown> {
+    const held = config[key];
+    return typeof held === "object" && held !== null && !Array.isArray(held)
+        ? { ...(held as Record<string, unknown>) }
+        : {};
+}
 
-    if (existing === undefined) {
+function emit(config: ServerConfig): string {
+    return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+function mergeJson(existing: string | undefined, path: string, shape: JsonShape): MergeResult {
+    // An empty file is one to fill in, not one to parse: `JSON.parse("")` throws, and refusing to write
+    // into a file somebody created and left blank would be unhelpful rather than careful.
+    if (existing === undefined || existing.trim().length === 0) {
         return {
-            content: `${JSON.stringify({ mcpServers: { [SERVER_NAME]: entry } }, null, 2)}\n`,
-            created: true,
+            content: emit({
+                ...(shape.preamble ?? {}),
+                [shape.key]: { [SERVER_NAME]: shape.entry }
+            }),
+            created: existing === undefined,
             unchanged: false
         };
     }
 
-    const config = parseMcpJson(existing, path);
-    const servers = { ...(config.mcpServers ?? {}) };
+    const config = parseConfig(existing, path);
+    const servers = serversIn(config, shape.key);
 
-    const unchanged = JSON.stringify(servers[SERVER_NAME]) === JSON.stringify(entry);
-    servers[SERVER_NAME] = entry;
+    const unchanged = JSON.stringify(servers[SERVER_NAME]) === JSON.stringify(shape.entry);
+    servers[SERVER_NAME] = shape.entry;
 
-    return {
-        content: `${JSON.stringify({ ...config, mcpServers: servers }, null, 2)}\n`,
-        created: false,
-        unchanged
-    };
+    return { content: emit({ ...config, [shape.key]: servers }), created: false, unchanged };
 }
 
-export function removeFromMcpJson(existing: string, path = ".mcp.json"): RemoveResult {
-    const config = parseMcpJson(existing, path);
-    const servers = { ...(config.mcpServers ?? {}) };
+function removeJson(existing: string, path: string, shape: JsonShape): RemoveResult {
+    const config = parseConfig(existing, path);
+    const servers = serversIn(config, shape.key);
 
     if (!(SERVER_NAME in servers)) {
         return { content: existing, empty: false, absent: true };
@@ -90,15 +117,54 @@ export function removeFromMcpJson(existing: string, path = ".mcp.json"): RemoveR
 
     delete servers[SERVER_NAME];
 
-    // Only "empty" if motte was the sole server and there is nothing else in the file worth keeping.
-    const otherKeys = Object.keys(config).filter((key) => key !== "mcpServers");
-    const empty = Object.keys(servers).length === 0 && otherKeys.length === 0;
+    // "Empty" means motte was the only thing in here — so `uninstall` may delete a file motte created.
+    // Anything motte wrote itself, `$schema` included, does not count as the user's content.
+    const ours = new Set([shape.key, ...Object.keys(shape.preamble ?? {})]);
+    const theirs = Object.keys(config).filter((key) => !ours.has(key));
 
     return {
-        content: `${JSON.stringify({ ...config, mcpServers: servers }, null, 2)}\n`,
-        empty,
+        content: emit({ ...config, [shape.key]: servers }),
+        empty: Object.keys(servers).length === 0 && theirs.length === 0,
         absent: false
     };
+}
+
+/** Claude Code's `.mcp.json`, Cursor's `mcp.json`, and Gemini CLI's `settings.json`. */
+const MCP_SERVERS: JsonShape = {
+    key: "mcpServers",
+    entry: { command: SERVER_COMMAND, args: SERVER_ARGS }
+};
+
+/**
+ * opencode: servers under `mcp`, and the whole command line as one array with an explicit `type`.
+ *
+ * Close enough to look like the same file, different enough that reusing the `mcpServers` shape would
+ * write a config opencode parses happily and then ignores — a success message and no working server.
+ */
+const OPENCODE: JsonShape = {
+    key: "mcp",
+    entry: { type: "local", command: [SERVER_COMMAND, ...SERVER_ARGS], enabled: true },
+    // Its own docs lead with `$schema`, and it is what makes the file self-describing in an editor.
+    preamble: { $schema: "https://opencode.ai/config.json" }
+};
+
+export function mergeMcpJson(existing: string | undefined, path = ".mcp.json"): MergeResult {
+    return mergeJson(existing, path, MCP_SERVERS);
+}
+
+export function removeFromMcpJson(existing: string, path = ".mcp.json"): RemoveResult {
+    return removeJson(existing, path, MCP_SERVERS);
+}
+
+export function mergeOpencodeJson(
+    existing: string | undefined,
+    path = "opencode.json"
+): MergeResult {
+    return mergeJson(existing, path, OPENCODE);
+}
+
+export function removeFromOpencodeJson(existing: string, path = "opencode.json"): RemoveResult {
+    return removeJson(existing, path, OPENCODE);
 }
 
 // ------------------------------------------------------- ~/.codex/config.toml

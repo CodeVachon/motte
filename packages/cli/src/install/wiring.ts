@@ -8,7 +8,9 @@ import {
     SERVER_COMMAND,
     SERVER_NAME,
     mergeCodexToml,
-    mergeMcpJson
+    mergeMcpJson,
+    mergeOpencodeJson,
+    type MergeResult
 } from "./agents.js";
 import { AGENTS_FILENAME, AGENTS_MARKERS, mergeAgentsMd } from "./instructions.js";
 import { HOOK_MARKERS, HOOK_NAME, mergeHook } from "./hooks.js";
@@ -30,32 +32,116 @@ export function home(): string {
     return process.env.HOME ?? process.env.USERPROFILE ?? ".";
 }
 
+/**
+ * One descriptor per agent: where its config lives, and how motte's entry goes into it.
+ *
+ * Data rather than branches. `planWiring` used to switch on the agent id, which was fine for two targets
+ * and would have been three more branches for Cursor, Gemini CLI and opencode — each of which differs only
+ * in a path and a merge function. Claude Code is still the exception, and says so.
+ */
 interface Target {
     id: AgentId;
     label: string;
     /** Whether this agent looks present on the machine. */
     detected: () => boolean;
+    /**
+     * Where this agent reads config for a given scope, or undefined if it has none.
+     *
+     * `root` is the project being wired, and is only passed for project scope.
+     */
+    config: (scope: Scope, root: () => string) => string | undefined;
+    /** Merge motte's entry into the file's existing contents. */
+    merge: (existing: string | undefined, path: string) => MergeResult;
 }
 
-function claudeCodePresent(): boolean {
-    return (
-        existsSync(join(home(), ".claude")) ||
-        existsSync(join(home(), ".claude.json")) ||
-        spawnSync("command", ["-v", "claude"], { shell: true }).status === 0
-    );
+/** Looks present if its config directory exists, or its command is on the PATH. */
+function presence(...names: string[]): () => boolean {
+    return () =>
+        names.some(
+            (name) =>
+                existsSync(join(home(), name)) ||
+                // Only the last segment is a command name — `.config/opencode` is a directory, `opencode` is
+                // the binary. Checking the PATH catches a fresh install that has never written any config.
+                spawnSync("command", ["-v", name.split("/").pop()!], { shell: true }).status === 0
+        );
 }
 
-function codexPresent(): boolean {
-    return (
-        existsSync(join(home(), ".codex")) ||
-        spawnSync("command", ["-v", "codex"], { shell: true }).status === 0
-    );
+/**
+ * Agents whose config is one JSON file per scope, holding `mcpServers`.
+ *
+ * Cursor, Gemini CLI and Claude Code's project file all take the identical shape, which is why one merge
+ * function serves them. Gemini's file holds the rest of its settings too, and `mergeMcpJson` preserves
+ * every other top-level key for exactly that reason.
+ */
+function jsonAt(user: string, project: string): Target["config"] {
+    return (scope, root) => (scope === "project" ? join(root(), project) : join(home(), user));
 }
 
 const TARGETS: Target[] = [
-    { id: "claude-code", label: "Claude Code", detected: claudeCodePresent },
-    { id: "codex", label: "Codex CLI", detected: codexPresent }
+    {
+        id: "claude-code",
+        label: "Claude Code",
+        detected: presence(".claude", ".claude.json"),
+        // Project only. `~/.claude.json` holds a great deal of Claude Code's own state, so user scope is
+        // delegated to its CLI instead — see `claudeDelegatedAction`.
+        config: (scope, root) => (scope === "project" ? join(root(), ".mcp.json") : undefined),
+        merge: mergeMcpJson
+    },
+    {
+        id: "codex",
+        label: "Codex CLI",
+        detected: presence(".codex"),
+        // One global TOML, whatever scope was asked for: Codex has no per-project config to write into.
+        config: () => join(home(), ".codex", "config.toml"),
+        merge: (existing) => mergeCodexToml(existing)
+    },
+    {
+        id: "cursor",
+        label: "Cursor",
+        detected: presence(".cursor"),
+        config: jsonAt(join(".cursor", "mcp.json"), join(".cursor", "mcp.json")),
+        merge: mergeMcpJson
+    },
+    {
+        id: "gemini",
+        label: "Gemini CLI",
+        detected: presence(".gemini"),
+        config: jsonAt(join(".gemini", "settings.json"), join(".gemini", "settings.json")),
+        merge: mergeMcpJson
+    },
+    {
+        id: "opencode",
+        label: "opencode",
+        detected: presence(join(".config", "opencode"), ".opencode"),
+        // Its project config sits in the root rather than in a dotted directory, and is meant to be
+        // committed — the only target whose project file is a normal part of the repository.
+        config: jsonAt(join(".config", "opencode", "opencode.json"), "opencode.json"),
+        merge: mergeOpencodeJson
+    }
 ];
+
+/** Every agent `--agent` accepts, so the command's choices cannot drift from the table. */
+export const AGENT_IDS = TARGETS.map((target) => target.id);
+
+/** Where each agent was looked for, for the message when nothing was detected. */
+export function detectionSummary(): string {
+    return TARGETS.map((target) => `${target.label} (~/${lookedFor(target.id)})`).join(", ");
+}
+
+function lookedFor(id: AgentId): string {
+    switch (id) {
+        case "claude-code":
+            return ".claude";
+        case "codex":
+            return ".codex";
+        case "cursor":
+            return ".cursor";
+        case "gemini":
+            return ".gemini";
+        default:
+            return ".config/opencode";
+    }
+}
 
 export interface ApplyOutcome {
     changed: boolean;
@@ -108,16 +194,23 @@ function read(path: string): string | undefined {
     return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
-function mcpJsonAction(label: string, root: string): Action {
-    const path = join(root, ".mcp.json");
+/**
+ * Write motte's entry into one agent's config file.
+ *
+ * The same three steps for every target — read, merge, write if it changed — with the descriptor supplying
+ * the path and the merge. The scope recorded is the file's own, not the one asked for: Codex has a single
+ * global config, so `--scope project` still wires it at user scope, and `uninstall` has to know that.
+ */
+function configAction(target: Target, scope: Scope, path: string): Action {
+    const actual: Scope = path.startsWith(home()) ? "user" : scope;
 
     return {
-        agent: "claude-code",
-        label,
-        scope: "project",
+        agent: target.id,
+        label: target.label,
+        scope: actual,
         path,
         apply: () => {
-            const merged = mergeMcpJson(read(path), path);
+            const merged = target.merge(read(path), path);
             if (!merged.unchanged) put(path, merged.content);
 
             return { changed: !merged.unchanged, created: merged.created };
@@ -163,23 +256,6 @@ function claudeDelegatedAction(label: string, scope: Scope): Action {
             }
 
             return { changed: true, created: false, detail: `claude ${argv.join(" ")}` };
-        }
-    };
-}
-
-function codexAction(label: string): Action {
-    const path = join(home(), ".codex", "config.toml");
-
-    return {
-        agent: "codex",
-        label,
-        scope: "user",
-        path,
-        apply: () => {
-            const merged = mergeCodexToml(read(path));
-            if (!merged.unchanged) put(path, merged.content);
-
-            return { changed: !merged.unchanged, created: merged.created };
         }
     };
 }
@@ -288,14 +364,14 @@ export function planWiring(options: PlanOptions): WiringPlan {
     const actions: Action[] = [];
 
     for (const target of present) {
-        if (target.id === "codex") {
-            actions.push(codexAction(target.label));
-            continue;
-        }
+        const path = target.config(options.scope, () => requireRoot(options.root));
+
+        // No file for this scope means the agent owns that config itself, which today is Claude Code's
+        // `~/.claude.json` — full of its own state, so its CLI writes the entry rather than motte.
         actions.push(
-            options.scope === "project"
-                ? mcpJsonAction(target.label, requireRoot(options.root))
-                : claudeDelegatedAction(target.label, options.scope)
+            path === undefined
+                ? claudeDelegatedAction(target.label, options.scope)
+                : configAction(target, options.scope, path)
         );
     }
 

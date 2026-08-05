@@ -484,6 +484,26 @@ motte mcp --print-config    # or paste the snippet yourself
 `motte init` does this for you; `motte install` is for a project created before it did, or for wiring up
 an agent installed later. `--hooks` additionally installs the commit hook described above.
 
+Five agents are detected and configured, each in its own file and its own shape:
+
+| Agent       | `--scope project`       | `--scope user`                     |
+| ----------- | ----------------------- | ---------------------------------- |
+| Claude Code | `.mcp.json`             | delegated to `claude mcp add`      |
+| Codex CLI   | —                       | `~/.codex/config.toml`             |
+| Cursor      | `.cursor/mcp.json`      | `~/.cursor/mcp.json`               |
+| Gemini CLI  | `.gemini/settings.json` | `~/.gemini/settings.json`          |
+| opencode    | `opencode.json`         | `~/.config/opencode/opencode.json` |
+
+Anything else: `motte mcp --print-config` prints the snippet to paste. Two of these are not quite like
+the others. Codex has one global config, so `--scope project` still writes at user scope and says so.
+Claude Code's `~/.claude.json` holds a lot of its own state, so user scope is delegated to its CLI —
+which is also why `motte uninstall` cannot reverse that one itself, and tells you the command instead.
+
+Merging never clobbers. Your other servers stay, and so does everything else in the file — Gemini's
+settings and opencode's theme live alongside `mcpServers`, and a config that cannot be parsed is left
+untouched rather than overwritten. `motte uninstall` removes only motte's own entry, and deletes a
+config file only when motte was the one that created it.
+
 Alongside the MCP config it writes motte's section of `AGENTS.md`, between markers. Wiring the server tells
 an agent that motte exists; it does not tell it how the project is meant to be worked — that `ready` is the
 question to start with, that a prerequisite belongs in `motte block` rather than in prose, and that notes

@@ -1,7 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    rmSync,
+    rmdirSync,
+    unlinkSync,
+    writeFileSync
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { timestamp } from "@motte/core";
-import { removeFromCodexToml, removeFromMcpJson } from "./agents.js";
+import {
+    removeFromCodexToml,
+    removeFromMcpJson,
+    removeFromOpencodeJson,
+    type RemoveResult
+} from "./agents.js";
 import { removeFromHook } from "./hooks.js";
 import { removeFromAgentsMd } from "./instructions.js";
 
@@ -9,7 +22,8 @@ import { removeFromAgentsMd } from "./instructions.js";
  * What was wired. `agents-md` is not an agent but the AGENTS.md block, which every supported agent
  * reads — recording it the same way is what lets `uninstall` remove exactly that block.
  */
-export type AgentId = "claude-code" | "codex" | "agents-md" | "git-hook";
+export type AgentId =
+    "claude-code" | "codex" | "cursor" | "gemini" | "opencode" | "agents-md" | "git-hook";
 export type Scope = "project" | "user" | "local";
 
 export interface WiringEntry {
@@ -80,6 +94,46 @@ export interface UnwireOutcome {
 }
 
 /**
+ * How to take motte back out of a given file.
+ *
+ * Keyed on which agent wrote it, not on the filename. It used to key on the extension, and `opencode.json`
+ * is what broke that: it ends in `.json` like Cursor's and Claude Code's files but keeps its servers under
+ * `mcp` rather than `mcpServers`, so the extension test would have quietly removed nothing and reported
+ * success. The agent is recorded at install time and is the fact that actually determines the shape.
+ */
+function removerFor(entry: WiringEntry): (existing: string, path: string) => RemoveResult {
+    switch (entry.agent) {
+        case "git-hook":
+            return (existing) => removeFromHook(existing);
+        case "agents-md":
+            return (existing) => removeFromAgentsMd(existing);
+        case "codex":
+            return (existing) => removeFromCodexToml(existing);
+        case "opencode":
+            return removeFromOpencodeJson;
+        // Claude Code, Cursor and Gemini CLI all keep `mcpServers` in a JSON file.
+        default:
+            return removeFromMcpJson;
+    }
+}
+
+/**
+ * Remove the directory a deleted config lived in, if nothing else is in it.
+ *
+ * Cursor and Gemini CLI keep their config in `.cursor/` and `.gemini/`, which motte creates if they are
+ * not there — so uninstalling used to leave two empty directories behind. `rmdir` refuses a directory
+ * that is not empty, which is what makes this safe: somebody's `.cursor/rules` keeps the directory, and
+ * a failure here is simply nothing to tidy.
+ */
+function tidyParent(path: string): void {
+    try {
+        rmdirSync(dirname(path));
+    } catch {
+        // Not empty, or not ours to remove. Either way there is nothing to do.
+    }
+}
+
+/**
  * Reverse one recorded wiring.
  *
  * Deletes the file only when motte created it. Anything motte merely merged into keeps everything
@@ -104,16 +158,7 @@ export function unwire(entry: WiringEntry): UnwireOutcome {
     try {
         const existing = readFileSync(entry.path, "utf8");
 
-        // Dispatched on what was written rather than on the path, for the hook: it has no extension, and
-        // adding a filename check here would break the moment git renamed a hook.
-        const outcome =
-            entry.agent === "git-hook"
-                ? removeFromHook(existing)
-                : entry.path.endsWith(".toml")
-                  ? removeFromCodexToml(existing)
-                  : entry.path.endsWith(".md")
-                    ? removeFromAgentsMd(existing)
-                    : removeFromMcpJson(existing, entry.path);
+        const outcome = removerFor(entry)(existing, entry.path);
 
         if (outcome.absent) return { entry, result: "not-found" };
 
@@ -121,6 +166,7 @@ export function unwire(entry: WiringEntry): UnwireOutcome {
         // motte's entry — even if that leaves it empty.
         if (outcome.empty && entry.createdFile === true) {
             unlinkSync(entry.path);
+            tidyParent(entry.path);
             return { entry, result: "deleted-file" };
         }
 

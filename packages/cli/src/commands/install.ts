@@ -1,5 +1,12 @@
 import type { CommandModule } from "yargs";
-import { applyAction, planWiring, type WiringResult } from "../install/wiring.js";
+import { relative } from "node:path";
+import {
+    AGENT_IDS,
+    applyAction,
+    detectionSummary,
+    planWiring,
+    type WiringResult
+} from "../install/wiring.js";
 import type { Scope } from "../install/record.js";
 import { emitJson } from "../context.js";
 import { dim, ok, warn } from "../ui/format.js";
@@ -25,14 +32,14 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
         yargs
             .option("agent", {
                 type: "string",
-                choices: ["claude-code", "codex"],
+                choices: AGENT_IDS,
                 describe: "Only this agent (default: every one detected)"
             })
             .option("scope", {
                 type: "string",
                 choices: ["project", "user", "local"],
                 default: "project",
-                describe: "project writes a committed .mcp.json; user applies everywhere"
+                describe: "project writes config you can commit; user applies everywhere"
             })
             .option("instructions", {
                 type: "boolean",
@@ -57,7 +64,7 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
         if (plan.actions.length === 0) {
             process.stdout.write(
                 `${warn("no supported agent was detected on this machine")}\n` +
-                    `${dim("  Looked for Claude Code (~/.claude) and Codex CLI (~/.codex).")}\n` +
+                    `${dim(`  Looked for ${detectionSummary()}.`)}\n` +
                     `${dim("  Pass --agent to wire one up anyway, or use `motte mcp --print-config`.")}\n`
             );
             return;
@@ -104,6 +111,19 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
             }
         }
 
+        /**
+         * The project files worth committing, so the advice matches what was written.
+         *
+         * Only project scope, and only files inside the project: a user-scope config describes one machine,
+         * and `.git/hooks` is not tracked, so neither can be committed by anybody.
+         */
+        const committable = results
+            .filter((result) => result.scope === "project" && result.agent !== "git-hook")
+            .map((result) =>
+                result.path === undefined ? undefined : relative(process.cwd(), result.path)
+            )
+            .filter((path): path is string => path !== undefined && !path.startsWith(".."));
+
         if (args.json === true) {
             emitJson({
                 scope,
@@ -119,8 +139,11 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
 
         process.stdout.write(
             `\n${dim("Restart the agent to pick this up.")}\n` +
-                (scope === "project"
-                    ? `${dim("Commit .mcp.json and AGENTS.md so everyone working here gets the same wiring.")}\n`
+                // Named from what was actually written. It used to say ".mcp.json and AGENTS.md" whatever
+                // happened, which became wrong as soon as there were targets with other config files:
+                // installing for Cursor and opencode alone advised committing a file that did not exist.
+                (committable.length > 0
+                    ? `${dim(`Commit ${committable.join(", ")} so everyone working here gets the same wiring.`)}\n`
                     : "")
         );
     }
