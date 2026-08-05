@@ -641,6 +641,7 @@ describe("wiring", RETRY, () => {
             "ready",
             "next",
             "find",
+            "import",
             "claim",
             "current",
             "release",

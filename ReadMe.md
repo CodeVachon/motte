@@ -364,6 +364,34 @@ exactly motte's part of it.
 It writes `Refs: #0042` rather than a bare `#0042` for a reason worth knowing: git strips lines starting with
 `#` from a commit message, so the bare form would silently vanish from an interactive commit.
 
+### Coming from GitHub Issues
+
+Nobody starts with an empty tracker:
+
+```bash
+motte import --github owner/repo --dry-run   # what would be created
+motte import --github owner/repo             # open issues
+motte import --github owner/repo --state all --limit 500
+```
+
+Titles, bodies, labels, assignees and the original dates come across, and **comments become notes** with
+their authors and dates — that is the half of a GitHub issue with the reasoning in it, and the half a
+copy-and-paste migration loses. Sub-issues become parent/child, so an epic arrives with its children
+under it.
+
+A closed issue lands in your completed state; one **closed as not planned** lands in a cancelled state if
+you have one, because that difference is exactly what keeps abandoned work out of your progress numbers.
+The GitHub number is kept as a link in the body rather than reused as the id — reusing it would collide
+with ids you already have.
+
+Uses the `gh` CLI when it is there, and the REST API with `GITHUB_TOKEN` otherwise. `gh` brings back more
+(it knows about sub-issues, and it never confuses a pull request for an issue), so it is preferred even
+when a token is set. Point `MOTTE_GITHUB_API` at a GitHub Enterprise instance to use that instead.
+
+**One-way, and not a sync.** Nothing is written back to GitHub, nothing is remembered for a second run,
+and importing twice creates everything twice — which is what `--dry-run` is for. Open issues only by
+default: a repository with two thousand closed ones would make the first day archaeology rather than work.
+
 ### Duplicates
 
 Two agents read the same backlog, neither sees the other's create, and the same work exists twice under

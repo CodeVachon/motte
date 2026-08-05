@@ -154,6 +154,17 @@ export { rankReady, type Ranked, type RankOptions, type RankSignals } from "./ne
 export { mergedBody, mergedInto, MergeError, planMerge, type MergePlan } from "./merge.js";
 
 export {
+    escapeSections,
+    planImport,
+    referenceLine,
+    stateFor,
+    type GithubComment,
+    type GithubIssue,
+    type ImportPlan,
+    type PlannedIssue
+} from "./github.js";
+
+export {
     searchIssues,
     type Hit,
     type SearchField,

@@ -84,6 +84,13 @@ export interface BrokenFile {
     message: string;
 }
 
+/** A new issue that brings its own dates and conversation — what `adopt` takes. */
+export type AdoptedIssue = NewIssue & {
+    created?: string;
+    updated?: string;
+    notes?: readonly Note[];
+};
+
 export class IssueStore {
     private cache = new Map<string, { mtimeMs: number; issue: Issue }>();
     private broken: BrokenFile[] = [];
@@ -289,7 +296,14 @@ export class IssueStore {
 
     // ---------------------------------------------------------------- writing
 
-    create(input: NewIssue): Issue {
+    /**
+     * An issue that already had a history somewhere else — see `adopt`, the door this one exists for.
+     *
+     * One construction with two public doors rather than two constructions: `adopt` arrived as a near-copy
+     * of `create` differing only in where the timestamps and notes come from, which fallow caught as a
+     * clone group. Everything either of them validates is validated here.
+     */
+    private insert(input: AdoptedIssue): Issue {
         const state =
             input.state === undefined
                 ? this.config.defaultState
@@ -311,15 +325,22 @@ export class IssueStore {
             ...(input.blockedBy === undefined || input.blockedBy.length === 0
                 ? {}
                 : { blockedBy: input.blockedBy }),
-            created: now,
-            updated: now,
+            created: input.created ?? now,
+            updated: input.updated ?? input.created ?? now,
             description: (input.description ?? "").trim(),
             plan: (input.plan ?? "").trim(),
-            notes: [],
+            // Sorted, because a note stream out of date order reads as a bug. GitHub hands comments over
+            // in order already; a hand-built import need not.
+            notes: [...(input.notes ?? [])].sort((a, b) => a.at.localeCompare(b.at)),
             unknownSections: []
         };
 
         return this.write(issue, issueFilename(issue.id, issue.title));
+    }
+
+    /** File a new issue: stamped now, with no notes yet. */
+    create(input: NewIssue): Issue {
+        return this.insert(input);
     }
 
     /** Create several children under one parent, allocating ids in a single pass. */
@@ -644,6 +665,21 @@ export class IssueStore {
         }
 
         return written;
+    }
+
+    /**
+     * Create an issue that already had a history somewhere else — the import path.
+     *
+     * Separate from `create` because `create` is right to refuse all of this: it stamps `created` and
+     * `updated` with now and starts with no notes, which is what filing a new issue means. An issue
+     * arriving from GitHub has dates and a conversation that predate this project, and flattening them to
+     * "now" would throw away the only thing that makes an imported backlog worth reading.
+     *
+     * The event log still records the creation as happening now, which is true: the issue was created here
+     * today, and it is only its contents that are older.
+     */
+    adopt(input: AdoptedIssue): Issue {
+        return this.insert(input);
     }
 
     /** What `merge` would do, without doing it. Throws the same refusals. */

@@ -36,6 +36,7 @@ import { mcpCommand } from "./commands/mcp.js";
 import { nextCommand } from "./commands/next.js";
 import { listCommand } from "./commands/list.js";
 import { logCommand } from "./commands/log.js";
+import { importCommand } from "./commands/import.js";
 import { mergeCommand } from "./commands/merge.js";
 import { PruneError, pruneCommand, restoreCommand } from "./commands/prune.js";
 import {
@@ -46,6 +47,7 @@ import {
     noteCommand
 } from "./commands/mutate.js";
 import { showCommand } from "./commands/show.js";
+import { ImportError } from "./import/github.js";
 import { AgentConfigError } from "./install/agents.js";
 import { EditorError } from "./ui/editor.js";
 import { TextArgError } from "./ui/textArg.js";
@@ -70,6 +72,7 @@ const EXPECTED_ERRORS = [
     DependencyCycleError,
     EditorError,
     IssueNotFoundError,
+    ImportError,
     IssueParseError,
     MergeError,
     TextArgError
@@ -239,6 +242,7 @@ function buildCli(argv: string[]) {
         .command(statusCommand)
         .command(treeCommand)
         .command(logCommand)
+        .command(importCommand)
         .command(mergeCommand)
         .command(pruneCommand)
         .command(restoreCommand)
