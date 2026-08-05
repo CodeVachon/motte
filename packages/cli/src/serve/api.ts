@@ -11,6 +11,8 @@ import {
     openBlockers,
     projectReport,
     ready,
+    searchIssues,
+    type IssueFilter,
     stateCategory,
     subtreeOf,
     type Config,
@@ -113,6 +115,9 @@ export interface TreeNodeResponse {
     state: string;
     children: TreeNodeResponse[];
 }
+
+/** What `GET /api/search` answers with. Derived, so the client cannot drift from it. */
+export type SearchResponse = ReturnType<typeof searchBody>;
 
 export interface TreeResponse {
     roots: TreeNodeResponse[];
@@ -295,6 +300,26 @@ function describe(error: z.ZodError): string {
         .join("; ");
 }
 
+/**
+ * The search body.
+ *
+ * Its own function so `SearchResponse` can be derived from it with `ReturnType`, the way every other
+ * response shape here is — hand-writing one of these is how `/api/status` came to leak whole issues.
+ */
+function searchBody(config: Config, issues: Issue[], query: string, filter: IssueFilter) {
+    const results = searchIssues(issues, query, { filter });
+
+    return {
+        query,
+        count: results.length,
+        issues: results.map((result) => ({
+            ...issueWithContext(config, issues, result.issue),
+            hits: result.hits,
+            totalHits: result.total
+        }))
+    };
+}
+
 /** The read-only endpoints. Returns undefined when the path is not one of them. */
 function readRoutes(context: ApiContext, request: ApiRequest): ApiResponse | undefined {
     const { config, store } = context;
@@ -304,6 +329,22 @@ function readRoutes(context: ApiContext, request: ApiRequest): ApiResponse | und
     if (request.path === "/config") return ok(configBody(config));
 
     if (request.path === "/status") return ok(statusBody(config, store.all()));
+
+    /**
+     * The same search the CLI runs, over the same core function.
+     *
+     * A second implementation in the browser would answer differently the first time either side changed —
+     * and the whole premise here is that the surfaces cannot disagree.
+     */
+    if (request.path === "/search") {
+        return ok(
+            searchBody(config, store.all(), request.query.get("q") ?? "", {
+                state: request.query.get("state") ?? undefined,
+                label: request.query.get("label") ?? undefined,
+                assignee: request.query.get("assignee") ?? undefined
+            })
+        );
+    }
 
     if (request.path === "/tree") {
         const issues = store.all();

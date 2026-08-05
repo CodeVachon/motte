@@ -150,6 +150,14 @@ export { filterIssues, matchesFilter, type FilterOptions, type IssueFilter } fro
 export { rankReady, type Ranked, type RankOptions, type RankSignals } from "./next.js";
 
 export {
+    searchIssues,
+    type Hit,
+    type SearchField,
+    type SearchOptions,
+    type SearchResult
+} from "./search.js";
+
+export {
     snapshotChanges,
     idOf,
     whenOf,

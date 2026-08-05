@@ -75,6 +75,7 @@ describe("handshake", () => {
                 "next_issue",
                 "ready_issues",
                 "release_issue",
+                "search_issues",
                 "set_blockers",
                 "set_parent",
                 "set_state",
@@ -106,6 +107,7 @@ describe("handshake", () => {
             "list_issues",
             "next_issue",
             "ready_issues",
+            "search_issues",
             "status_report",
             "tree"
         ]);

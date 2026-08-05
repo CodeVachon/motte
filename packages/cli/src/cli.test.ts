@@ -638,6 +638,7 @@ describe("wiring", RETRY, () => {
             "unblock",
             "ready",
             "next",
+            "find",
             "claim",
             "release",
             "status",
@@ -1036,5 +1037,126 @@ describe("choosing and taking work", RETRY, () => {
 
             expect((await motte(root, ["release", "1"], { MOTTE_AGENT: "nova" })).code).toBe(1);
         });
+    });
+});
+
+/**
+ * `motte find`.
+ *
+ * The bodies were reachable only with grep, which is a strange gap in a tool whose argument is that the
+ * notes are the valuable part.
+ */
+describe("find", RETRY, () => {
+    async function backlog(): Promise<string> {
+        const root = await initialised();
+        await motte(root, [
+            "add",
+            "Serve the API",
+            "-d",
+            "Checks the Host header.\nRejects a foreign host."
+        ]);
+        await motte(root, ["add", "Unrelated work", "-d", "Nothing to see.", "-l", "core"]);
+        await motte(root, ["note", "1", "Chose frontmatter over JSON for diff quality."]);
+
+        return root;
+    }
+
+    it("finds a phrase in a description and says where", async () => {
+        const root = await backlog();
+
+        const run = await motte(root, ["find", "host header"]);
+
+        expect(run.stdout).toContain("#0001");
+        expect(run.stdout).toContain("description:1");
+        expect(run.stdout).toContain("1 issue, 1 match");
+    });
+
+    /** The notes are the half with the reasoning in them, and the reason this command exists. */
+    it("finds a phrase in a note, and says whose note it was", async () => {
+        const root = await backlog();
+
+        const run = await motte(root, ["find", "diff quality"]);
+
+        expect(run.stdout).toMatch(/note \d{4}-\d{2}-\d{2}/);
+        expect(run.stdout).toContain("Test User");
+    });
+
+    it("reports every hit as JSON, with where each one was", async () => {
+        const root = await backlog();
+
+        const found = (await motte(root, ["find", "host", "--json"])).json<{
+            query: string;
+            count: number;
+            issues: { id: number; hits: { field: string; line: string }[]; totalHits: number }[];
+        }>();
+
+        expect(found.query).toBe("host");
+        expect(found.count).toBe(1);
+        expect(found.issues[0]!.totalHits).toBe(2);
+        expect(found.issues[0]!.hits.map((hit) => hit.field)).toEqual([
+            "description",
+            "description"
+        ]);
+    });
+
+    it("composes with the ordinary filters", async () => {
+        const root = await backlog();
+
+        const both = (await motte(root, ["find", "o", "--json"])).json<{ count: number }>();
+        const narrowed = (await motte(root, ["find", "o", "--label", "core", "--json"])).json<{
+            count: number;
+        }>();
+
+        expect(both.count).toBeGreaterThan(narrowed.count);
+        expect(narrowed.count).toBe(1);
+    });
+
+    it("caps the lines shown per issue and says how many were left", async () => {
+        const root = await initialised();
+        const description = Array.from({ length: 6 }, (_, i) => `line ${i} mentions header`).join(
+            "\n"
+        );
+        await motte(root, ["add", "Long one", "-d", description]);
+
+        const run = await motte(root, ["find", "header", "--hits", "2"]);
+
+        expect(run.stdout).toContain("and 4 more in this issue");
+    });
+
+    it("says so when nothing matches, quoting what was asked for", async () => {
+        const root = await backlog();
+
+        const run = await motte(root, ["find", "quantum"]);
+
+        expect(run.stdout).toMatch(/nothing matches/);
+        expect(run.stdout).toContain("quantum");
+    });
+
+    it("searches every project with --all", async () => {
+        const shared = mkdtempSync(join(tmpdir(), "motte-find-"));
+        const first = project();
+        await motte(first, ["init", "--name", "First", "--no-agents"], {
+            MOTTE_INSTALL_DIR: shared
+        });
+        await motte(first, ["add", "Alpha", "-d", "mentions widgets"], {
+            MOTTE_INSTALL_DIR: shared
+        });
+
+        const second = project();
+        await motte(second, ["init", "--name", "Second", "--no-agents"], {
+            MOTTE_INSTALL_DIR: shared
+        });
+        await motte(second, ["add", "Beta", "-d", "also mentions widgets"], {
+            MOTTE_INSTALL_DIR: shared
+        });
+
+        const found = (
+            await motte(first, ["find", "widgets", "--all", "--json"], {
+                MOTTE_INSTALL_DIR: shared
+            })
+        ).json<{ count: number; projects: { name: string }[] }>();
+
+        expect(found.count).toBe(2);
+        expect(found.projects.map((entry) => entry.name).sort()).toEqual(["First", "Second"]);
     });
 });

@@ -3,6 +3,7 @@ import type {
     ErrorResponse,
     IssueListResponse,
     IssueResponse,
+    SearchResponse,
     StatusResponse,
     TreeResponse
 } from "@motte/cli/serve/api.js";
@@ -23,7 +24,12 @@ import type {
 // Re-exported so views import their types from the client they call rather than reaching into the CLI
 // package. Only the shapes a view actually names are forwarded — the list and tree responses are consumed
 // through `api.issues()` and `api.tree()`, whose return types carry them.
-export type { ConfigResponse, IssueResponse, StatusResponse } from "@motte/cli/serve/api.js";
+export type {
+    ConfigResponse,
+    IssueResponse,
+    SearchResponse,
+    StatusResponse
+} from "@motte/cli/serve/api.js";
 
 /** A response the server refused. Carries the status so a caller can tell 404 from 409. */
 export class ApiError extends Error {
@@ -90,6 +96,10 @@ export const api = {
     config: (): Promise<ConfigResponse> => request<ConfigResponse>("/config"),
 
     status: (): Promise<StatusResponse> => request<StatusResponse>("/status"),
+
+    /** The same search the CLI runs, over the same core function on the server. */
+    search: (query: string): Promise<SearchResponse> =>
+        request<SearchResponse>(`/search?q=${encodeURIComponent(query)}`),
 
     tree: (ref?: number): Promise<TreeResponse> =>
         request<TreeResponse>(`/tree${ref === undefined ? "" : `?ref=${ref}`}`),

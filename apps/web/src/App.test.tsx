@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./App.js";
 import { config, issue, status } from "./testing/fixtures.js";
 
@@ -67,6 +67,28 @@ function stubApi(options: { fail?: string } = {}): void {
 
         const path = String(url);
         if (path === "/api/status") statusLoads += 1;
+
+        if (path.startsWith("/api/search")) {
+            const query = new URL(path, "http://x").searchParams.get("q") ?? "";
+            const matches = query.toLowerCase().includes("only")
+                ? [
+                      {
+                          ...issue({ id: 1, title: "Only issue" }),
+                          hits: [
+                              { field: "description", line: "mentions only once", lineNumber: 2 }
+                          ],
+                          totalHits: 3
+                      }
+                  ]
+                : [];
+
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ query, count: matches.length, issues: matches })
+            });
+        }
+
         const body =
             path === "/api/config"
                 ? config()
@@ -254,5 +276,104 @@ describe("the change stream dropping", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+/**
+ * Searching from the browser.
+ *
+ * The board offered no way to find anything — it was built when there were twenty issues. These cover the
+ * parts a person notices: that it opens, that a hit says where it was, and that the keyboard works.
+ */
+describe("search", () => {
+    async function open() {
+        stubApi();
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("board")).toBeDefined());
+
+        await act(async () => {
+            screen.getByTestId("search-open").click();
+        });
+
+        return screen.getByTestId("search-input") as HTMLInputElement;
+    }
+
+    it("opens from the header", async () => {
+        await open();
+
+        expect(screen.getByTestId("search")).toBeDefined();
+    });
+
+    /** `/` is what every other tool with a search box uses. */
+    it("opens on the / key", async () => {
+        stubApi();
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("board")).toBeDefined());
+
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "/" }));
+        });
+
+        expect(screen.getByTestId("search")).toBeDefined();
+    });
+
+    it("shows a matching issue, and where the match was", async () => {
+        const input = await open();
+
+        await act(async () => {
+            fireEvent.change(input, { target: { value: "only" } });
+        });
+
+        await waitFor(() => expect(screen.getByTestId("search-result-1")).toBeDefined());
+        const result = screen.getByTestId("search-result-1").textContent ?? "";
+        expect(result).toContain("Only issue");
+        // Where it was, not just that it matched.
+        expect(result).toContain("description:2");
+        // And how many were left over.
+        expect(result).toContain("2 more in this issue");
+    });
+
+    it("says so when nothing matches", async () => {
+        const input = await open();
+
+        await act(async () => {
+            fireEvent.change(input, { target: { value: "quantum" } });
+        });
+
+        await waitFor(() => expect(screen.getByTestId("search-empty")).toBeDefined());
+    });
+
+    it("asks for nothing until something is typed", async () => {
+        await open();
+
+        expect(screen.queryByTestId("search-empty")).toBeNull();
+        expect(screen.queryByTestId("search-count")).toBeNull();
+    });
+
+    it("opens the selected issue with enter", async () => {
+        const input = await open();
+
+        await act(async () => {
+            fireEvent.change(input, { target: { value: "only" } });
+        });
+        await waitFor(() => expect(screen.getByTestId("search-result-1")).toBeDefined());
+
+        await act(async () => {
+            fireEvent.keyDown(input, { key: "Enter" });
+        });
+
+        await waitFor(() => expect(screen.getByTestId("detail-1")).toBeDefined());
+        // And the overlay goes, rather than sitting over the issue it just opened.
+        expect(screen.queryByTestId("search")).toBeNull();
+    });
+
+    it("closes on escape", async () => {
+        const input = await open();
+
+        await act(async () => {
+            fireEvent.keyDown(input, { key: "Escape" });
+        });
+
+        expect(screen.queryByTestId("search")).toBeNull();
     });
 });

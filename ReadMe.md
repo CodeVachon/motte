@@ -149,6 +149,32 @@ motte ready --blocked    # what is waiting, and on what
 motte list --ready
 ```
 
+### Finding things
+
+```bash
+motte find "host header"           # titles, descriptions, plans and notes
+motte find frontmatter --state done
+motte find widgets --all           # across every project
+```
+
+`list` filters frontmatter and a ref matches a title fragment, which left the descriptions, plans and notes
+reachable only with `grep -r .motte/issues` — the half of the record with the reasoning in it, and the reason
+the notes are worth writing at all.
+
+```
+$ motte find rebinding
+#0033 Done  Serve API and SSE watcher · +web
+  note 2026-07-30 claude  the server correctly answering a genuine localhost request, so the
+                          DNS-rebinding guard was completely untested
+
+1 issue, 1 match
+```
+
+A hit says where it was — `description:12`, or which note and whose — so the answer is readable without
+opening the file. It is a case-insensitive phrase, not a regular expression: "where did we discuss the Host
+header" is what people type, and anything cleverer is what `grep` is for. The same search is in the web UI on
+`/`, over the same core function, so the two cannot disagree.
+
 ### Choosing and taking work
 
 ```bash

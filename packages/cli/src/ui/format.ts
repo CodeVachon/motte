@@ -78,6 +78,11 @@ export function dim(text: string): string {
     return chalk.dim(text);
 }
 
+/** Used to pick a search match out of the line it was found on. */
+export function bold(text: string): string {
+    return chalk.bold(text);
+}
+
 export function warn(text: string): string {
     return chalk.yellow(`! ${text}`);
 }

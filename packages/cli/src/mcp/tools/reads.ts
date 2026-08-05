@@ -9,6 +9,7 @@ import {
     projectReport,
     rankReady,
     ready,
+    searchIssues,
     subtreeReport,
     type Issue,
     type TreeNode
@@ -147,6 +148,62 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                     count: selected.length,
                     states: config.states.map((state) => state.name),
                     issues: selected.map((issue) => issueJson(config, issues, issue))
+                });
+            }
+        )
+    );
+
+    /**
+     * Searching the bodies.
+     *
+     * The tool an agent needs before repeating work: the reasoning, and the dead ends, are in the notes, and
+     * nothing else here can reach them.
+     */
+    server.registerTool(
+        "search_issues",
+        {
+            title: "Search issues",
+            description:
+                "Search titles, descriptions, plans and note bodies for a phrase, case-insensitively. " +
+                "Use this to find prior reasoning before deciding something that may already be decided.",
+            inputSchema: {
+                query: z.string().min(1).describe("The phrase to look for"),
+                state: z.string().optional(),
+                label: z.string().optional(),
+                assignee: z.string().optional(),
+                hits: z
+                    .number()
+                    .int()
+                    .positive()
+                    .optional()
+                    .describe("Matching lines to return per issue (default 3)")
+            },
+            annotations: { readOnlyHint: true }
+        },
+        guard(
+            (args: {
+                query: string;
+                state?: string;
+                label?: string;
+                assignee?: string;
+                hits?: number;
+            }) => {
+                const { config, store } = open();
+                const issues = store.all();
+
+                const results = searchIssues(issues, args.query, {
+                    filter: { state: args.state, label: args.label, assignee: args.assignee },
+                    ...(args.hits === undefined ? {} : { maxHits: args.hits })
+                });
+
+                return text({
+                    query: args.query,
+                    count: results.length,
+                    issues: results.map((result) => ({
+                        ...issueJson(config, issues, result.issue),
+                        hits: result.hits,
+                        totalHits: result.total
+                    }))
                 });
             }
         )

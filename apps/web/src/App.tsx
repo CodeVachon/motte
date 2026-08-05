@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { Search } from "./components/Search.js";
 import { cn } from "./lib/cn.js";
 import { href, navigate, useRoute, type Route } from "./lib/router.js";
 import { useBacklog, type Backlog } from "./lib/useBacklog.js";
@@ -75,6 +77,31 @@ function View({ route, backlog }: { route: Route; backlog: Backlog }) {
 export function App() {
     const route = useRoute();
     const backlog = useBacklog();
+    const [searching, setSearching] = useState(false);
+
+    /**
+     * `/` opens the search, the way it does in every other tool that has one.
+     *
+     * Ignored while typing, or `/` in an issue's description would open the overlay instead of reaching the
+     * textarea.
+     */
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent): void => {
+            const target = event.target as HTMLElement | null;
+            const typing =
+                target?.tagName === "INPUT" ||
+                target?.tagName === "TEXTAREA" ||
+                target?.isContentEditable === true;
+
+            if (event.key === "/" && !typing) {
+                event.preventDefault();
+                setSearching(true);
+            }
+        };
+
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
 
     // An issue page is reached from the board, so the board stays the highlighted tab while on one.
     const active = route.name === "issue" || route.name === "unknown" ? "board" : route.name;
@@ -104,6 +131,15 @@ export function App() {
                         )}
                     </div>
                     <nav className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setSearching(true)}
+                            className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                            data-testid="search-open"
+                            title="Search (/)"
+                        >
+                            Search
+                        </button>
                         {TABS.map((tab) => (
                             <Tab
                                 key={tab.label}
@@ -152,6 +188,8 @@ export function App() {
                     </div>
                 </div>
             )}
+
+            {searching && <Search onClose={() => setSearching(false)} />}
 
             <main className="mx-auto max-w-6xl px-6 py-6">
                 {backlog.loading && backlog.config === undefined ? (

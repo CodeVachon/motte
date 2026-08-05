@@ -13,6 +13,7 @@ import {
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { claimCommand, releaseCommand } from "./commands/claim.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { findCommand } from "./commands/find.js";
 import { projectsCommand } from "./commands/projects.js";
 import { renumberCommand } from "./commands/renumber.js";
 import { serveCommand } from "./commands/serve.js";
@@ -162,6 +163,7 @@ function buildCli(argv: string[]) {
         .command(unblockCommand)
         .command(readyCommand)
         .command(nextCommand)
+        .command(findCommand)
         .command(claimCommand)
         .command(releaseCommand)
         .command(statusCommand)
