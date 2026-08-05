@@ -26,3 +26,6 @@
 {"at":"2026-08-04T21:27:23Z","id":81,"by":"claude","as":"agent","type":"parent","from":9,"to":null}
 {"at":"2026-08-04T21:27:23Z","id":3,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}
 {"at":"2026-08-04T21:27:23Z","id":67,"by":"claude","as":"agent","type":"state","from":"Done","to":"In Progress"}
+{"at":"2026-08-05T12:36:45Z","id":82,"by":"claude","as":"agent","type":"created","title":"motte init should wire up agents and write AGENTS.md","state":"Todo"}
+{"at":"2026-08-05T12:36:53Z","id":82,"by":"claude","as":"agent","type":"state","from":"Todo","to":"In Progress"}
+{"at":"2026-08-05T12:49:38Z","id":82,"by":"claude","as":"agent","type":"state","from":"In Progress","to":"Done"}

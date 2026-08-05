@@ -2,8 +2,13 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { dirname, join } from "node:path";
 import { timestamp } from "@motte/core";
 import { removeFromCodexToml, removeFromMcpJson } from "./agents.js";
+import { removeFromAgentsMd } from "./instructions.js";
 
-export type AgentId = "claude-code" | "codex";
+/**
+ * What was wired. `agents-md` is not an agent but the AGENTS.md block, which every supported agent
+ * reads — recording it the same way is what lets `uninstall` remove exactly that block.
+ */
+export type AgentId = "claude-code" | "codex" | "agents-md";
 export type Scope = "project" | "user" | "local";
 
 export interface WiringEntry {
@@ -100,7 +105,9 @@ export function unwire(entry: WiringEntry): UnwireOutcome {
 
         const outcome = entry.path.endsWith(".toml")
             ? removeFromCodexToml(existing)
-            : removeFromMcpJson(existing, entry.path);
+            : entry.path.endsWith(".md")
+              ? removeFromAgentsMd(existing)
+              : removeFromMcpJson(existing, entry.path);
 
         if (outcome.absent) return { entry, result: "not-found" };
 

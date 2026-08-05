@@ -67,7 +67,7 @@ the next upgrade.
 ## Getting started
 
 ```bash
-motte init                              # writes .motte.config.json and .motte/issues/
+motte init                              # config, issues dir, and the agent wiring
 motte add "Ship the thing"              # → #0001
 motte add "Write the parser" -p 1       # a child of #0001
 motte move 2 "in progress"
@@ -76,6 +76,9 @@ motte block 2 1                         # #0002 waits on #0001
 motte ready                             # what can be picked up now
 motte status --epics
 ```
+
+`init` also wires up the agents it finds on the machine and writes motte's section of `AGENTS.md`, so a
+new project is one command rather than two. Pass `--no-agents` to skip that.
 
 Commit `.motte.config.json` and `.motte/` — the backlog is the point.
 
@@ -273,14 +276,24 @@ motte install --dry-run     # see what it would write first
 motte mcp --print-config    # or paste the snippet yourself
 ```
 
+`motte init` does this for you; `motte install` is for a project created before it did, or for wiring up
+an agent installed later.
+
+Alongside the MCP config it writes motte's section of `AGENTS.md`, between markers. Wiring the server tells
+an agent that motte exists; it does not tell it how the project is meant to be worked — that `ready` is the
+question to start with, that a prerequisite belongs in `motte block` rather than in prose, and that notes
+are where the reasoning goes. Nothing outside the markers is touched, so the file stays the project's.
+`--no-instructions` skips it.
+
 `motte install` merges into existing config rather than replacing it, and records what it wrote — so
-`motte uninstall --keep-cli` removes exactly that. A file motte created is deleted; a file motte merged
-into keeps everything except motte's own entry. It refuses to touch a config file it cannot parse.
+`motte uninstall --keep-cli` removes exactly that: motte's key out of a file it merged into, motte's block
+out of `AGENTS.md`, and only a file motte itself created gets deleted. A file that predated motte keeps
+everything except motte's own entry. It refuses to touch a config file it cannot parse.
 
 Claude Code's user-scope config lives in `~/.claude.json` alongside a lot of other state, so
 `--scope user` delegates to `claude mcp add` rather than motte guessing at that file's shape.
 
-Commit `.mcp.json` and every agent working in the repo picks it up.
+Commit `.mcp.json` and `AGENTS.md` and every agent working in the repo picks them up.
 
 The server tells agents to start with **`ready_issues`** rather than listing everything — unsettled work
 with every blocker settled, which is the question an agent actually has at the start of a session. And

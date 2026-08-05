@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import chalk from "chalk";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../index.js";
@@ -101,8 +101,23 @@ export async function motte(
     let stderr = "";
     let code = 0;
 
-    // Deterministic authorship: CI has no git user configured.
-    for (const [key, value] of Object.entries({ MOTTE_AUTHOR: "Test User", ...env })) {
+    /**
+     * Deterministic authorship, and a home directory that is not the developer's.
+     *
+     * `init` and `install` write agent configuration: `~/.codex/config.toml` and the wiring record under
+     * `~/.motte/`. Without this, running the suite would edit the real files of whoever ran it — and
+     * detection reads `~/.claude`, so the same test would behave differently on two machines.
+     */
+    const sandboxHome = join(cwd, ".test-home");
+    mkdirSync(sandboxHome, { recursive: true });
+
+    for (const [key, value] of Object.entries({
+        MOTTE_AUTHOR: "Test User",
+        HOME: sandboxHome,
+        USERPROFILE: sandboxHome,
+        MOTTE_INSTALL_DIR: join(sandboxHome, ".motte"),
+        ...env
+    })) {
         previousEnv.set(key, process.env[key]);
         process.env[key] = value;
     }
@@ -191,6 +206,11 @@ export const SPAWN_TIMEOUT_MS = 20_000;
 export const RETRY = { retry: 2 };
 
 export function spawnMotte(cwd: string, args: string[], env: Record<string, string> = {}): Run {
+    // Sandboxed the same way as the in-process runner: a spawned `init` wires up agents too, and would
+    // otherwise write into the home directory of whoever ran the suite.
+    const sandboxHome = join(cwd, ".test-home");
+    mkdirSync(sandboxHome, { recursive: true });
+
     // `bun <file>`, not `bun run <file>`: executing the entry point directly skips package.json script
     // resolution, which is per-spawn overhead this test pays sixty-odd times.
     const result = spawnSync("bun", [ENTRY, ...args], {
@@ -204,6 +224,9 @@ export function spawnMotte(cwd: string, args: string[], env: Record<string, stri
             // free of ANSI escapes.
             MOTTE_AUTHOR: "Test User",
             NO_COLOR: "1",
+            HOME: sandboxHome,
+            USERPROFILE: sandboxHome,
+            MOTTE_INSTALL_DIR: join(sandboxHome, ".motte"),
             ...env
         }
     });
@@ -219,6 +242,17 @@ export function spawnMotte(cwd: string, args: string[], env: Record<string, stri
     }
 
     return asRun(result.status ?? -1, result.stdout ?? "", result.stderr ?? "");
+}
+
+/**
+ * Make agent detection fire, deterministically.
+ *
+ * Detection also checks `command -v claude`, so on a developer machine with Claude Code installed it fires
+ * and in CI it does not — the same test would then assert different things in the two places. Creating the
+ * directory it looks for inside the sandbox home settles it either way.
+ */
+export function pretendClaudeCodeInstalled(root: string): void {
+    mkdirSync(join(root, ".test-home", ".claude"), { recursive: true });
 }
 
 /**

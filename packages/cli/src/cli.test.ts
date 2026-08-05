@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    readdirSync,
+    writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +16,7 @@ import {
     SPAWN_TIMEOUT_MS,
     initialised,
     motte,
+    pretendClaudeCodeInstalled,
     project,
     spawnMotte
 } from "./testing/cli.js";
@@ -51,6 +59,110 @@ describe("init", RETRY, () => {
     it("overwrites with --force", async () => {
         const root = await initialised();
         expect((await motte(root, ["init", "--name", "Other", "--force"])).code).toBe(0);
+    });
+
+    /**
+     * Wiring belongs to init, not to a hint about a second command.
+     *
+     * #0020 always said init would offer this, and until it did, a new project needed two commands and
+     * nobody learned the second one until they read the output of the first.
+     */
+    describe("the agent wiring", () => {
+        it("writes .mcp.json for a detected agent", async () => {
+            const root = project();
+            pretendClaudeCodeInstalled(root);
+
+            const run = await motte(root, ["init", "--name", "Test"]);
+
+            expect(run.code).toBe(0);
+            const wiring = JSON.parse(readFileSync(join(root, ".mcp.json"), "utf8")) as {
+                mcpServers: Record<string, { command: string; args: string[] }>;
+            };
+            expect(wiring.mcpServers.motte).toEqual({ command: "motte", args: ["mcp"] });
+        });
+
+        /** The instructions go in whether or not an agent is configured here: a clone may have one. */
+        it("writes the motte section of AGENTS.md", async () => {
+            const root = project();
+            const run = await motte(root, ["init", "--name", "Test"]);
+
+            const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+            expect(run.stdout).toMatch(/AGENTS\.md/);
+            expect(agents).toContain("motte ready");
+            expect(agents).toContain("<!-- motte:start -->");
+        });
+
+        it("appends to an AGENTS.md that is already there, keeping every word of it", async () => {
+            const root = project();
+            writeFileSync(join(root, "AGENTS.md"), "# Ours\n\nRun the linter.\n", "utf8");
+
+            await motte(root, ["init", "--name", "Test"]);
+
+            const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+            expect(agents).toContain("Run the linter.");
+            expect(agents.indexOf("# Ours")).toBeLessThan(agents.indexOf("<!-- motte:start -->"));
+        });
+
+        it("leaves one block behind, however many times it runs", async () => {
+            const root = project();
+            await motte(root, ["init", "--name", "Test"]);
+            await motte(root, ["init", "--name", "Test", "--force"]);
+            await motte(root, ["install"]);
+
+            const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+            expect(agents.split("<!-- motte:start -->")).toHaveLength(2);
+        });
+
+        it("writes neither with --no-agents", async () => {
+            const root = project();
+            pretendClaudeCodeInstalled(root);
+
+            const run = await motte(root, ["init", "--name", "Test", "--no-agents"]);
+
+            expect(run.code).toBe(0);
+            expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+            expect(existsSync(join(root, ".mcp.json"))).toBe(false);
+            // The project itself is still there — --no-agents is about the wiring only.
+            expect(existsSync(join(root, ".motte.config.json"))).toBe(true);
+        });
+
+        /**
+         * `init <dir>` scaffolds somewhere other than the working directory, and the wiring used to find
+         * its project by walking up from the working directory — so it would have wired up whichever
+         * project the shell was sitting in.
+         */
+        it("wires the directory it was given, not the one it was run from", async () => {
+            // The outer project is created without wiring, so an AGENTS.md appearing there afterwards can
+            // only have come from the nested init.
+            const outer = project();
+            expect((await motte(outer, ["init", "--name", "Outer", "--no-agents"])).code).toBe(0);
+
+            const inner = join(outer, "nested");
+            mkdirSync(inner, { recursive: true });
+
+            await motte(outer, ["init", inner, "--name", "Nested"]);
+
+            expect(existsSync(join(inner, "AGENTS.md"))).toBe(true);
+            expect(existsSync(join(outer, "AGENTS.md"))).toBe(false);
+        });
+
+        it("still creates the project when the wiring cannot be written", async () => {
+            const root = project();
+            // A start marker with no end means someone edited them by hand; rewriting from there would
+            // eat whatever followed, so the file is left alone and the command says so.
+            writeFileSync(
+                join(root, "AGENTS.md"),
+                "# Ours\n\n<!-- motte:start -->\nhalf\n",
+                "utf8"
+            );
+
+            const run = await motte(root, ["init", "--name", "Test"]);
+
+            expect(run.code).toBe(0);
+            expect(existsSync(join(root, ".motte.config.json"))).toBe(true);
+            expect(run.stderr).toMatch(/end marker/);
+            expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("half");
+        });
     });
 });
 
