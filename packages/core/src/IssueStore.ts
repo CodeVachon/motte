@@ -551,6 +551,53 @@ export class IssueStore {
     }
 
     /**
+     * Repair a file's name and formatting without changing what it says.
+     *
+     * The two mechanical findings `doctor` reports — a filename that disagrees with the frontmatter, and a
+     * file that would be rewritten if written back — are one operation: format the issue and put it at the
+     * name its id and title imply.
+     *
+     * `updated` is deliberately untouched. Neither repair changes what the issue says, and bumping the
+     * timestamp would make a formatting fix look like an edit in every report that reads it — including the
+     * stale-work check, which would then think somebody had just been working on it.
+     */
+    normalise(
+        filePath: string,
+        options: { dryRun?: boolean } = {}
+    ): { path: string; renamed: boolean; rewritten: boolean } {
+        const raw = readFileSync(filePath, "utf8");
+        const issue = parseIssueFile(raw, filePath);
+
+        const target = join(this.config.issuesPath, issueFilename(issue.id, issue.title));
+        const formatted = formatIssueFile(issue);
+
+        const renamed = target !== filePath;
+        const rewritten = formatted !== raw;
+
+        // Reading to decide is not the same as writing to find out: a dry run answers exactly what would
+        // happen, from the same comparison the real run makes, and the caller reports it.
+        if (options.dryRun === true || (!renamed && !rewritten)) {
+            return { path: target, renamed, rewritten };
+        }
+
+        const temp = `${target}.${process.pid}.tmp`;
+        writeFileSync(temp, formatted, "utf8");
+        renameSync(temp, target);
+
+        this.cache.set(target, {
+            mtimeMs: statSync(target).mtimeMs,
+            issue: { ...issue, filePath: target }
+        });
+
+        if (renamed) {
+            unlinkSync(filePath);
+            this.cache.delete(filePath);
+        }
+
+        return { path: target, renamed, rewritten };
+    }
+
+    /**
      * Give the issue in one specific file a new id, rewriting and renaming the file.
      *
      * Addressed by path rather than by id, because the only reason to call this is that two files claim

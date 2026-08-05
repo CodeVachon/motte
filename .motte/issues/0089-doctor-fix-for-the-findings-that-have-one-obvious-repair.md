@@ -1,10 +1,11 @@
 ---
 id: 89
 title: doctor --fix for the findings that have one obvious repair
-state: Todo
+state: Done
+assignee: claude
 labels: [cli, dx]
 created: 2026-08-05T15:49:58Z
-updated: 2026-08-05T15:49:58Z
+updated: 2026-08-05T17:38:52Z
 ---
 
 ## Description

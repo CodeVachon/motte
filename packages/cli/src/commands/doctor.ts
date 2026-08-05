@@ -5,6 +5,9 @@ import {
     flattenTree,
     idFromFilename,
     isSettled,
+    issueFilename,
+    padId,
+    planRenumber,
     stateCategory,
     timeInState,
     type BrokenEventLine,
@@ -240,9 +243,111 @@ export function issueFileProblems(config: Config, issues: readonly Issue[]): Pro
     return problems;
 }
 
+/**
+ * The findings with one obvious repair, and nothing else.
+ *
+ * Three of them: a duplicate id, which `renumber` exists to settle; a filename that disagrees with its
+ * frontmatter; and a file that would be rewritten if written back. Each has exactly one right answer, and
+ * each already had an implementation elsewhere.
+ *
+ * Everything else `doctor` reports is a judgement call — a missing parent, a cycle, work started while
+ * blocked, a parent that disagrees with its subtree, an issue nobody has touched for a fortnight — and a
+ * tool that guesses at those is a tool nobody can trust with the ones it does fix.
+ */
+export interface Repair {
+    kind: "renumbered" | "renamed" | "reformatted";
+    message: string;
+}
+
+export function repair(
+    store: ReturnType<typeof context>["store"],
+    options: { dryRun?: boolean } = {}
+): Repair[] {
+    const repairs: Repair[] = [];
+    const moved: string[] = [];
+
+    // Duplicates first: renumbering renames the files it moves, so doing it after the filename pass would
+    // leave the pass looking at names that are about to change.
+    for (const reassignment of planRenumber(store.all()).reassignments) {
+        const from = reassignment.issue.filePath;
+        if (from === undefined) continue;
+
+        moved.push(from);
+
+        repairs.push({
+            kind: "renumbered",
+            message: `#${padId(reassignment.from)} → #${padId(reassignment.to)}  ${reassignment.issue.title}`
+        });
+
+        if (options.dryRun !== true) store.renumberFile(from, reassignment.to);
+    }
+
+    // Re-read after renumbering: the ids and paths just moved. In a dry run nothing moved, so the files the
+    // renumber pass reported are excluded rather than reported twice under a name they no longer will have.
+    const alreadyMoving = new Set(moved);
+    const candidates = new Set<string>();
+
+    for (const issue of store.notRoundTrippable()) {
+        if (issue.filePath !== undefined) candidates.add(issue.filePath);
+    }
+    for (const issue of store.all()) {
+        if (issue.filePath === undefined) continue;
+        if (basename(issue.filePath) !== issueFilename(issue.id, issue.title)) {
+            candidates.add(issue.filePath);
+        }
+    }
+
+    for (const filePath of [...candidates].sort()) {
+        if (alreadyMoving.has(filePath)) continue;
+
+        const name = basename(filePath);
+        const outcome = store.normalise(filePath, { dryRun: options.dryRun === true });
+
+        if (outcome.renamed) {
+            repairs.push({ kind: "renamed", message: `${name} → ${basename(outcome.path)}` });
+        }
+        if (outcome.rewritten) {
+            repairs.push({ kind: "reformatted", message: basename(outcome.path) });
+        }
+    }
+
+    return repairs;
+}
+
 /** "1 issue" rather than "1 issues" — `list` already gets this right, `doctor` did not. */
 function countIssues(count: number): string {
     return `${count} issue${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * What was repaired, and a reminder of what was not.
+ *
+ * The second half matters as much as the first: somebody running `--fix` on a backlog with a cycle in it
+ * should not read a list of successful repairs and conclude the cycle is gone.
+ */
+function renderRepairs(repairs: readonly Repair[], dryRun: boolean): void {
+    const out = process.stdout;
+
+    if (repairs.length === 0) {
+        out.write(`${dim("nothing to repair mechanically")}\n`);
+        return;
+    }
+
+    // The kinds are named in the past tense, because that is what they are once applied; a dry run needs
+    // the verb instead.
+    const verbs = { renumbered: "renumber", renamed: "rename", reformatted: "reformat" } as const;
+
+    for (const entry of repairs) {
+        out.write(
+            dryRun
+                ? `${dim(`would ${verbs[entry.kind]}:`)} ${entry.message}\n`
+                : `${ok(entry.message)}\n`
+        );
+    }
+
+    out.write(
+        `\n${dim(dryRun ? "Nothing was changed. Run without --dry-run to apply." : "Anything reported below was left alone — those are judgement calls, not repairs.")}\n\n`
+    );
 }
 
 function render(problems: readonly Problem[], checked: number): void {
@@ -270,6 +375,8 @@ function render(problems: readonly Problem[], checked: number): void {
 interface DoctorArgs {
     json?: boolean;
     staleAfter?: number;
+    fix?: boolean;
+    dryRun?: boolean;
 }
 
 export const doctorCommand: CommandModule<{}, DoctorArgs> = {
@@ -282,9 +389,19 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
                 default: 7,
                 describe: "Warn about work started more than this many days ago (0 disables)"
             })
+            .option("fix", {
+                type: "boolean",
+                describe: "Repair the findings that have one obvious repair"
+            })
+            .option("dry-run", { type: "boolean", describe: "With --fix, say what would change" })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
+
+        const repairs = args.fix === true ? repair(store, { dryRun: args.dryRun }) : [];
+
+        // Re-read after repairing, so what is reported is the backlog as it now stands rather than as it
+        // was before the repairs — the whole point of running the two together.
         const issues = store.all();
         const log = store.events();
 
@@ -307,10 +424,14 @@ export const doctorCommand: CommandModule<{}, DoctorArgs> = {
             emitJson({
                 ok: errors.length === 0,
                 checked: issues.length,
+                ...(args.fix === true
+                    ? { [args.dryRun === true ? "wouldRepair" : "repaired"]: repairs }
+                    : {}),
                 errors,
                 warnings: problems.filter((problem) => problem.severity === "warning")
             });
         } else {
+            if (args.fix === true) renderRepairs(repairs, args.dryRun === true);
             render(problems, issues.length);
         }
 

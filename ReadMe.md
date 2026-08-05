@@ -232,7 +232,18 @@ motte log 12                # one issue, plus how long it spent in each state
 motte log --since 7d        # what moved this week
 motte log --limit 20
 motte doctor                # warns about work started more than 7 days ago
+motte doctor --fix          # repairs the findings that have one obvious repair
+motte doctor --fix --dry-run
 ```
+
+`--fix` handles exactly three findings: a duplicate id, which `motte renumber` settles; a filename that
+disagrees with its frontmatter; and a file that would be rewritten if written back. Each has one right
+answer. Everything else `doctor` reports — a missing parent, a cycle, work started while blocked, a parent
+that disagrees with its subtree — is a judgement call, and it says plainly that it left those alone rather
+than letting a list of successful repairs imply the backlog is clean.
+
+A formatting repair does not touch `updated`: neither repair changes what an issue says, and bumping the
+timestamp would make tidying look like an edit to every report that reads it, the stale-work check included.
 
 The log records **transitions only** — created, state, title, assignee, parent, blockers. Notes already
 carry their own timestamp and author on the issue, and description or plan history is already in

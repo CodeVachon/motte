@@ -1336,3 +1336,157 @@ describe("issues and commits", RETRY, () => {
         });
     });
 });
+
+/**
+ * `motte doctor --fix`.
+ *
+ * Three findings have one obvious repair each; everything else `doctor` reports is a judgement call. The
+ * distinction is the feature, so the tests check both halves — what it repairs, and that it leaves the rest
+ * alone and says so.
+ */
+describe("doctor --fix", RETRY, () => {
+    /** A backlog with every mechanical problem, plus one nobody can fix for you. */
+    async function broken(): Promise<string> {
+        const root = await initialised();
+        const dir = join(root, ".motte", "issues");
+
+        const write = (name: string, body: string) => writeFileSync(join(dir, name), body, "utf8");
+
+        write(
+            "0007-first.md",
+            "---\nid: 7\ntitle: Filed first\nstate: Todo\ncreated: 2026-08-01T09:00:00Z\n" +
+                "updated: 2026-08-01T09:00:00Z\n---\n\n## Description\n\nBranch A.\n"
+        );
+        write(
+            "0007-second.md",
+            "---\nid: 7\ntitle: Filed second\nstate: Todo\ncreated: 2026-08-02T09:00:00Z\n" +
+                "updated: 2026-08-02T09:00:00Z\n---\n\n## Description\n\nBranch B.\n"
+        );
+        write(
+            "0009-stale-name.md",
+            "---\nid: 9\ntitle: The title changed\nstate: Todo\ncreated: 2026-08-03T09:00:00Z\n" +
+                "updated: 2026-08-03T09:00:00Z\n---\n\n## Description\n\nRenamed by hand.\n"
+        );
+        // Trailing whitespace and no final newline: parses, but would be rewritten.
+        write(
+            "0011-needs-reformatting.md",
+            "---\nid: 11\ntitle: Needs reformatting\nstate: Todo\ncreated: 2026-08-04T09:00:00Z\n" +
+                "updated: 2026-08-04T09:00:00Z\n---\n\n## Description\n\nText.   "
+        );
+        write(
+            "0012-orphan.md",
+            "---\nid: 12\ntitle: Points at nothing\nstate: Todo\nparent: 999\n" +
+                "created: 2026-08-05T09:00:00Z\nupdated: 2026-08-05T09:00:00Z\n---\n\n" +
+                "## Description\n\nIts parent does not exist.\n"
+        );
+
+        return root;
+    }
+
+    it("repairs a duplicate id, a stale filename and a file that would be rewritten", async () => {
+        const root = await broken();
+        expect((await motte(root, ["doctor"])).code).toBe(1);
+
+        const fixed = (await motte(root, ["doctor", "--fix", "--json"])).json<{
+            repaired: { kind: string; message: string }[];
+            errors: { kind: string }[];
+        }>();
+
+        expect(fixed.repaired.map((entry) => entry.kind).sort()).toEqual(
+            ["renamed", "renamed", "renamed", "renumbered", "reformatted"].sort()
+        );
+
+        const names = readdirSync(join(root, ".motte", "issues")).sort();
+        expect(names).toContain("0009-the-title-changed.md");
+        expect(names).not.toContain("0009-stale-name.md");
+        // The duplicate moved to a fresh id above everything in use.
+        expect(names.some((name) => name.startsWith("0013-"))).toBe(true);
+    });
+
+    /** The other half: a missing parent is a judgement call and must survive --fix untouched. */
+    it("leaves what it cannot decide, and says that it did", async () => {
+        const root = await broken();
+
+        const run = await motte(root, ["doctor", "--fix"]);
+
+        expect(run.stdout).toMatch(/left alone/);
+        expect(run.stdout + run.stderr).toMatch(/#12 has parent #999/);
+        // Which means the command still fails, because the backlog is still broken.
+        expect(run.code).toBe(1);
+    });
+
+    it("reports the backlog as it stands after repairing, not before", async () => {
+        const root = await initialised();
+        writeFileSync(
+            join(root, ".motte", "issues", "0004-stale-name.md"),
+            "---\nid: 4\ntitle: Renamed\nstate: Todo\ncreated: 2026-08-01T09:00:00Z\n" +
+                "updated: 2026-08-01T09:00:00Z\n---\n\n## Description\n\nText.\n",
+            "utf8"
+        );
+
+        const run = await motte(root, ["doctor", "--fix"]);
+
+        expect(run.code).toBe(0);
+        expect(run.stdout).toContain("no problems found");
+    });
+
+    describe("--dry-run", () => {
+        it("says exactly what it would do, and changes nothing", async () => {
+            const root = await broken();
+            const before = readdirSync(join(root, ".motte", "issues")).sort();
+
+            const run = await motte(root, ["doctor", "--fix", "--dry-run"]);
+
+            expect(run.stdout).toContain(
+                "would rename: 0009-stale-name.md → 0009-the-title-changed.md"
+            );
+            expect(run.stdout).toContain("would reformat:");
+            expect(run.stdout).toMatch(/Nothing was changed/);
+            expect(readdirSync(join(root, ".motte", "issues")).sort()).toEqual(before);
+        });
+
+        /**
+         * The dry run and the real run must agree. They used to disagree: the dry run reported every
+         * candidate as "renamed to what its id and title imply", including files the renumber pass was
+         * about to move anyway.
+         */
+        it("matches what the real run then does", async () => {
+            const root = await broken();
+
+            const planned = (await motte(root, ["doctor", "--fix", "--dry-run", "--json"])).json<{
+                wouldRepair: { kind: string; message: string }[];
+            }>();
+            const applied = (await motte(root, ["doctor", "--fix", "--json"])).json<{
+                repaired: { kind: string; message: string }[];
+            }>();
+
+            expect(planned.wouldRepair).toEqual(applied.repaired);
+        });
+    });
+
+    it("says so when there is nothing mechanical to repair", async () => {
+        const root = await initialised();
+        await motte(root, ["add", "Perfectly fine", "-d", "Nothing wrong."]);
+
+        expect((await motte(root, ["doctor", "--fix"])).stdout).toMatch(/nothing to repair/);
+    });
+
+    /**
+     * A formatting repair is not an edit. Bumping `updated` would make it look like one in every report
+     * that reads the timestamp — including the stale-work check.
+     */
+    it("does not touch updated when it only reformats", async () => {
+        const root = await initialised();
+        writeFileSync(
+            join(root, ".motte", "issues", "0004-untidy.md"),
+            "---\nid: 4\ntitle: Untidy\nstate: Todo\ncreated: 2026-08-01T09:00:00Z\n" +
+                "updated: 2026-08-01T09:00:00Z\n---\n\n## Description\n\nText.   ",
+            "utf8"
+        );
+
+        await motte(root, ["doctor", "--fix"]);
+
+        const shown = (await motte(root, ["show", "4", "--json"])).json<{ updated: string }>();
+        expect(shown.updated).toBe("2026-08-01T09:00:00Z");
+    });
+});
