@@ -13,6 +13,7 @@ import {
     type Issue
 } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
+import { openProjects, totals } from "../projects/across.js";
 import {
     dim,
     heading,
@@ -26,6 +27,7 @@ import {
 interface StatusArgs {
     json?: boolean;
     epics?: boolean;
+    all?: boolean;
 }
 
 export const statusCommand: CommandModule<{}, StatusArgs> = {
@@ -34,8 +36,19 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
     builder: (yargs) =>
         yargs
             .option("epics", { type: "boolean", describe: "Include per-epic rollups" })
+            .option("all", {
+                type: "boolean",
+                describe: "Every project on this machine, not just this one"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
+        // Deliberately before `context()`: this is the one report that answers a question from outside any
+        // project, and requiring one to ask it would defeat the point.
+        if (args.all === true) {
+            renderAcross(args.json === true);
+            return;
+        }
+
         const { config, store } = context();
         const issues = store.all();
         const report = projectReport(config, issues);
@@ -68,6 +81,76 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
         renderStatus(config, issues, args.epics === true);
     }
 };
+
+/**
+ * Progress across every project on this machine.
+ *
+ * The question no repository can answer, because none of them knows the others exist. Totals are summed
+ * over issues rather than averaged over projects — a two-issue project and a two-hundred-issue one do not
+ * weigh the same, and averaging percentages would say they do.
+ */
+function renderAcross(json: boolean): void {
+    const { projects, unreadable } = openProjects();
+    const reports = projects.map((project) => projectReport(project.config, project.issues));
+    const combined = totals(projects, reports);
+
+    if (json) {
+        emitJson({
+            total: combined,
+            projects: projects.map((project, index) => ({
+                name: project.name,
+                root: project.root,
+                percentComplete: reports[index]!.percentComplete,
+                counted: reports[index]!.counted,
+                completed: reports[index]!.completed,
+                inProgress: reports[index]!.inProgress.map(issueJson)
+            })),
+            unreadable: unreadable.map((project) => ({ name: project.name, root: project.root }))
+        });
+        return;
+    }
+
+    const out = process.stdout;
+
+    if (projects.length === 0) {
+        out.write(
+            `\n${dim("no projects registered yet")}\n` +
+                `${dim("  Any motte command run inside a project registers it.")}\n\n`
+        );
+        return;
+    }
+
+    out.write(`\n${heading("All projects")}\n\n`);
+    out.write(
+        `${progressBar(combined.percent)} ${combined.percent}%  ` +
+            `${dim(`${combined.done} of ${combined.counted} done`)}` +
+            `${dim(` · ${combined.started} started · ${combined.projects} projects`)}\n\n`
+    );
+
+    // Padded so the percentages line up; the names are the only variable-length column.
+    const width = Math.max(...projects.map((project) => project.name.length));
+
+    projects.forEach((project, index) => {
+        const report = reports[index]!;
+
+        out.write(
+            `  ${project.name.padEnd(width)}  ${dim(`${String(report.percentComplete).padStart(3)}%`)}  ` +
+                `${dim(`${report.completed}/${report.counted}`)}\n`
+        );
+
+        for (const issue of report.inProgress) {
+            out.write(`    ${issueLine(project.config, issue)}\n`);
+        }
+    });
+
+    if (unreadable.length > 0) {
+        out.write(
+            `\n${dim(`${unreadable.length} registered project(s) could not be read — \`motte projects\` lists them`)}\n`
+        );
+    }
+
+    out.write("\n");
+}
 
 /**
  * The human-readable status report.

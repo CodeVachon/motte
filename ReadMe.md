@@ -188,6 +188,27 @@ impossible rather than merely rare.
 
 Set `"events": { "enabled": false }` in the config to turn it off.
 
+### Across projects
+
+```bash
+motte projects                       # every project motte has run in, most recent first
+motte status --all                   # progress across all of them
+motte list --all --assignee atlas    # what is assigned to somebody, everywhere
+```
+
+Any command run inside a project registers it in `~/.motte/projects.json`. That is what makes the questions
+no single repository can answer answerable: what is assigned to me everywhere, what is in flight, where I
+left off. Both `--all` flags work from anywhere, including outside a project.
+
+It holds a summary only — counts, and what is in flight — never issue bodies, and the committed files stay
+the only source of truth: `--all` re-reads each project rather than trusting the stored summary. A JSON file
+rather than a database because it is a few dozen rows, and because a file you can read and repair by hand is
+the same bargain the issue format makes.
+
+Set `MOTTE_NO_INDEX=1` and motte keeps no record outside your repositories. A project that has moved or been
+deleted is shown as `missing` rather than forgotten — it may be on a volume that is not mounted — and
+`motte projects --prune` drops those once you say so.
+
 ### Watching it happen
 
 ```bash

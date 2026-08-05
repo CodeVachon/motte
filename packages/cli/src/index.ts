@@ -11,6 +11,7 @@ import {
 } from "@motte/core";
 import { blockCommand, readyCommand, unblockCommand } from "./commands/deps.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { projectsCommand } from "./commands/projects.js";
 import { renumberCommand } from "./commands/renumber.js";
 import { serveCommand } from "./commands/serve.js";
 import { watchCommand } from "./commands/watch.js";
@@ -21,7 +22,7 @@ import {
     wordsFromArgv
 } from "./completion.js";
 import { COMPLETION_SHELLS, completionScript, isCompletionShell } from "./completionScripts.js";
-import { context } from "./context.js";
+import { context, registerVisit } from "./context.js";
 import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
 import { mcpCommand } from "./commands/mcp.js";
@@ -162,6 +163,7 @@ function buildCli(argv: string[]) {
         .command(pruneCommand)
         .command(restoreCommand)
         .command(doctorCommand)
+        .command(projectsCommand)
         .command(renumberCommand)
         .command(serveCommand)
         .command(watchCommand)
@@ -334,7 +336,13 @@ export async function run(argv: string[] = hideBin(process.argv)): Promise<void>
 export async function main(argv: string[] = hideBin(process.argv)): Promise<void> {
     try {
         await run(argv);
+        // After the command, not before: recording the visit when the project was opened stored the backlog
+        // as it was without whatever the command then did to it.
+        registerVisit();
     } catch (thrown) {
+        // Still recorded on the way out. A command that failed still tells us the project exists, and a
+        // partial write is exactly the state somebody will want to see next.
+        registerVisit();
         report(thrown);
     }
 }

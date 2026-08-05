@@ -108,14 +108,9 @@ export async function motte(
      * `~/.motte/`. Without this, running the suite would edit the real files of whoever ran it — and
      * detection reads `~/.claude`, so the same test would behave differently on two machines.
      */
-    const sandboxHome = join(cwd, ".test-home");
-    mkdirSync(sandboxHome, { recursive: true });
-
     for (const [key, value] of Object.entries({
         MOTTE_AUTHOR: "Test User",
-        HOME: sandboxHome,
-        USERPROFILE: sandboxHome,
-        MOTTE_INSTALL_DIR: join(sandboxHome, ".motte"),
+        ...sandboxEnv(cwd),
         ...env
     })) {
         previousEnv.set(key, process.env[key]);
@@ -206,11 +201,6 @@ export const SPAWN_TIMEOUT_MS = 20_000;
 export const RETRY = { retry: 2 };
 
 export function spawnMotte(cwd: string, args: string[], env: Record<string, string> = {}): Run {
-    // Sandboxed the same way as the in-process runner: a spawned `init` wires up agents too, and would
-    // otherwise write into the home directory of whoever ran the suite.
-    const sandboxHome = join(cwd, ".test-home");
-    mkdirSync(sandboxHome, { recursive: true });
-
     // `bun <file>`, not `bun run <file>`: executing the entry point directly skips package.json script
     // resolution, which is per-spawn overhead this test pays sixty-odd times.
     const result = spawnSync("bun", [ENTRY, ...args], {
@@ -224,9 +214,9 @@ export function spawnMotte(cwd: string, args: string[], env: Record<string, stri
             // free of ANSI escapes.
             MOTTE_AUTHOR: "Test User",
             NO_COLOR: "1",
-            HOME: sandboxHome,
-            USERPROFILE: sandboxHome,
-            MOTTE_INSTALL_DIR: join(sandboxHome, ".motte"),
+            // Sandboxed the same way as the in-process runner: a spawned `init` wires up agents and
+            // registers the project, and would otherwise touch the home directory of whoever ran the suite.
+            ...sandboxEnv(cwd),
             ...env
         }
     });
@@ -251,6 +241,24 @@ export function spawnMotte(cwd: string, args: string[], env: Record<string, stri
  * and in CI it does not — the same test would then assert different things in the two places. Creating the
  * directory it looks for inside the sandbox home settles it either way.
  */
+/**
+ * The environment that keeps a run out of the developer's home directory.
+ *
+ * Exported because not every spawn can go through `spawnMotte`: the EPIPE test needs a shell pipeline, and
+ * building its environment by hand is how one test came to register a temp directory in the real project
+ * registry. Anything that starts a motte process should take this.
+ */
+export function sandboxEnv(root: string): Record<string, string> {
+    const home = join(root, ".test-home");
+    mkdirSync(home, { recursive: true });
+
+    return {
+        HOME: home,
+        USERPROFILE: home,
+        MOTTE_INSTALL_DIR: join(home, ".motte")
+    };
+}
+
 export function pretendClaudeCodeInstalled(root: string): void {
     mkdirSync(join(root, ".test-home", ".claude"), { recursive: true });
 }

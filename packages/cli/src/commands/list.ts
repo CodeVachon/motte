@@ -10,7 +10,8 @@ import {
     type Issue
 } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
-import { dim, issueLine, treeLines, warn } from "../ui/format.js";
+import { openProjects } from "../projects/across.js";
+import { dim, heading, issueLine, treeLines, warn } from "../ui/format.js";
 
 interface ListArgs {
     state?: string;
@@ -22,6 +23,7 @@ interface ListArgs {
     blocked?: boolean;
     tree?: boolean;
     json?: boolean;
+    all?: boolean;
 }
 
 export const listCommand: CommandModule<{}, ListArgs> = {
@@ -52,8 +54,19 @@ export const listCommand: CommandModule<{}, ListArgs> = {
             })
             .option("blocked", { type: "boolean", describe: "Only issues waiting on a blocker" })
             .option("tree", { alias: "t", type: "boolean", describe: "Render as a hierarchy" })
+            .option("all", {
+                type: "boolean",
+                describe: "Across every project on this machine"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
+        // Before `context()`, because the point of `--all` is asking from anywhere — including from a
+        // directory that is not a motte project at all.
+        if (args.all === true) {
+            listAcross(args);
+            return;
+        }
+
         const { config, store } = context();
         const all = store.all();
         let issues = all;
@@ -116,3 +129,72 @@ export const listCommand: CommandModule<{}, ListArgs> = {
         );
     }
 };
+
+/**
+ * The same list, across every project on this machine.
+ *
+ * This is what makes "what is assigned to me everywhere" answerable: `motte list --all --assignee atlas`.
+ * The filters are the shared ones, so they behave here exactly as they do in one project; `--tree` and
+ * `--parent` are not offered, because a hierarchy and a parent reference only mean something within the
+ * project whose ids they belong to.
+ */
+function listAcross(args: ListArgs): void {
+    const { projects, unreadable } = openProjects();
+    const out = process.stdout;
+
+    const found = projects.map((project) => {
+        let issues = filterIssues(
+            project.issues,
+            { state: args.state, label: args.label, assignee: args.assignee },
+            { stateMatch: "prefix" }
+        );
+
+        if (args.open === true) {
+            issues = issues.filter((issue) => !isSettled(project.config, issue));
+        }
+        if (args.ready === true) {
+            issues = issues.filter((issue) => isReady(project.config, project.issues, issue));
+        }
+        if (args.blocked === true) {
+            issues = issues.filter(
+                (issue) =>
+                    !isSettled(project.config, issue) &&
+                    isBlocked(project.config, project.issues, issue)
+            );
+        }
+
+        return { project, issues };
+    });
+
+    const total = found.reduce((count, entry) => count + entry.issues.length, 0);
+
+    if (args.json === true) {
+        emitJson({
+            count: total,
+            projects: found.map((entry) => ({
+                name: entry.project.name,
+                root: entry.project.root,
+                issues: entry.issues.map(issueJson)
+            })),
+            unreadable: unreadable.map((project) => ({ name: project.name, root: project.root }))
+        });
+        return;
+    }
+
+    if (total === 0) {
+        out.write(`${dim("no issues match in any project")}\n`);
+        return;
+    }
+
+    for (const { project, issues } of found) {
+        if (issues.length === 0) continue;
+
+        out.write(`\n${heading(project.name)}\n`);
+        for (const issue of issues) out.write(`${issueLine(project.config, issue)}\n`);
+    }
+
+    const projectCount = found.filter((entry) => entry.issues.length > 0).length;
+    out.write(
+        `\n${dim(`${total} issue${total === 1 ? "" : "s"} in ${projectCount} project${projectCount === 1 ? "" : "s"}`)}\n`
+    );
+}

@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { CONFIG_FILENAME, DEFAULT_STATES } from "@motte/core";
+import { context } from "../context.js";
 import { AgentConfigError } from "../install/agents.js";
 import { applyAction, home, planWiring } from "../install/wiring.js";
 import { dim, ok, warn } from "../ui/format.js";
@@ -122,6 +123,15 @@ export const initCommand: CommandModule<{}, InitArgs> = {
         // After the config exists, because the wiring finds the project the same way every other command
         // does — by looking for that file.
         if (args.agents !== false) wireAgents(root);
+
+        // Opening the project it just created is also what registers it, so `motte projects` knows about a
+        // project from the moment it exists rather than from the next command run inside it.
+        try {
+            context(root);
+        } catch {
+            // The config was just written, so this should not fail — and if it does, the project is still
+            // set up and `doctor` is the command that should say why.
+        }
 
         out.write(
             `\n${dim("Commit all of it — the backlog is meant to travel with the code.")}\n` +

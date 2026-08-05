@@ -18,6 +18,7 @@ import {
     motte,
     pretendClaudeCodeInstalled,
     project,
+    sandboxEnv,
     spawnMotte
 } from "./testing/cli.js";
 
@@ -592,12 +593,20 @@ describe("wiring", RETRY, () => {
         const root = await initialised();
         for (let i = 0; i < 5; i += 1) spawnMotte(root, ["add", `Issue ${i}`]);
 
+        // A shell pipeline, so it cannot go through `spawnMotte` — but it still needs that helper's
+        // sandbox. Without it this one test wrote a project into the home directory of whoever ran the
+        // suite, which is how the registry from #0045 came to know about temp directories.
         const piped = spawnSync("sh", ["-c", `bun ${ENTRY} list | head -2`], {
             cwd: root,
             encoding: "utf8",
             timeout: SPAWN_TIMEOUT_MS,
             killSignal: "SIGKILL",
-            env: { ...process.env, MOTTE_AUTHOR: "Test User", NO_COLOR: "1" }
+            env: {
+                ...process.env,
+                ...sandboxEnv(root),
+                MOTTE_AUTHOR: "Test User",
+                NO_COLOR: "1"
+            }
         });
 
         // The point of the regression is that it exits, so assert that before inspecting the output.
@@ -636,6 +645,7 @@ describe("wiring", RETRY, () => {
             "serve",
             "watch",
             "doctor",
+            "projects",
             "renumber",
             "mcp",
             "install",
