@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
     buildTree,
+    filterIssues,
     subtreeOf,
     epicReports,
     openBlockers,
@@ -81,23 +82,14 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 const issues = store.all();
                 let selected = issues;
 
-                if (args.state !== undefined) {
-                    const needle = args.state.toLowerCase();
-                    selected = selected.filter((issue) => issue.state.toLowerCase() === needle);
-                }
-                if (args.label !== undefined) {
-                    const needle = args.label.toLowerCase();
-                    selected = selected.filter((issue) =>
-                        (issue.labels ?? []).some((label) => label.toLowerCase() === needle)
-                    );
-                }
-                if (args.assignee !== undefined) {
-                    const needle = args.assignee.toLowerCase();
-                    selected = selected.filter((issue) => issue.assignee?.toLowerCase() === needle);
-                }
-                if (args.parent !== undefined) {
-                    selected = selected.filter((issue) => issue.parent === args.parent);
-                }
+                // Exact state matching, unlike `motte list`: a caller here has the state name in hand
+                // rather than typing a fragment, and widening it would change the tool's contract.
+                selected = filterIssues(selected, {
+                    state: args.state,
+                    label: args.label,
+                    assignee: args.assignee,
+                    parent: args.parent
+                });
                 if (args.blocked === true) {
                     selected = selected.filter(
                         (issue) => openBlockers(config, issues, issue).length > 0

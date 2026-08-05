@@ -1,89 +1,81 @@
 import type { CommandModule } from "yargs";
-import { openBlockers } from "@motte/core";
+import { filterIssues, openBlockers, type Issue, type IssueStore } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import { dim, issueLine, ok, paintId } from "../ui/format.js";
 
-interface BlockArgs {
+interface BlockerArgs {
     ref: string;
     blocker: string;
     json?: boolean;
 }
 
-export const blockCommand: CommandModule<{}, BlockArgs> = {
+/**
+ * `block` and `unblock`, which differ only in the store method they call and the sentence they print.
+ *
+ * Built from one description rather than written twice: the pair was two nine- and twelve-line clone
+ * groups, and the shape is the kind that drifts — the `--json` branch or the resolution of the two refs
+ * getting fixed in one of them and not the other.
+ */
+function blockerCommand(spec: {
+    command: string;
+    describe: string;
+    blockerDescribe: string;
+    /** Takes the store the handler already opened, rather than opening a second one. */
+    apply: (store: IssueStore, id: number, blocker: number) => Issue;
+    said: (issueId: number, blockerId: number, blockerTitle: string) => string;
+}): CommandModule<{}, BlockerArgs> {
+    return {
+        command: spec.command,
+        describe: spec.describe,
+        builder: (yargs) =>
+            yargs
+                .positional("ref", {
+                    type: "string",
+                    demandOption: true,
+                    describe: "The blocked issue"
+                })
+                .positional("blocker", {
+                    type: "string",
+                    demandOption: true,
+                    describe: spec.blockerDescribe
+                })
+                .option("json", { type: "boolean", describe: "Machine-readable output" }),
+        handler: (args) => {
+            const { config, store } = context();
+            const target = store.resolve(args.ref);
+            const blocker = store.resolve(args.blocker);
+
+            const issue = spec.apply(store, target.id, blocker.id);
+
+            if (args.json === true) {
+                emitJson(issueJson(issue));
+                return;
+            }
+
+            process.stdout.write(
+                `${ok(spec.said(issue.id, blocker.id, blocker.title))}\n` +
+                    `${issueLine(config, issue)}\n`
+            );
+        }
+    };
+}
+
+export const blockCommand = blockerCommand({
     command: "block <ref> <blocker>",
     describe: "Record that an issue is blocked by another",
-    builder: (yargs) =>
-        yargs
-            .positional("ref", {
-                type: "string",
-                demandOption: true,
-                describe: "The blocked issue"
-            })
-            .positional("blocker", {
-                type: "string",
-                demandOption: true,
-                describe: "The issue it waits on"
-            })
-            .option("json", { type: "boolean", describe: "Machine-readable output" }),
-    handler: (args) => {
-        const { config, store } = context();
-        const target = store.resolve(args.ref);
-        const blocker = store.resolve(args.blocker);
+    blockerDescribe: "The issue it waits on",
+    apply: (store, id, blocker) => store.block(id, blocker),
+    said: (issueId, blockerId, title) =>
+        `${paintId(issueId)} is blocked by ${paintId(blockerId)} ${dim(title)}`
+});
 
-        const issue = store.block(target.id, blocker.id);
-
-        if (args.json === true) {
-            emitJson(issueJson(issue));
-            return;
-        }
-
-        process.stdout.write(
-            `${ok(`${paintId(issue.id)} is blocked by ${paintId(blocker.id)} ${dim(blocker.title)}`)}\n` +
-                `${issueLine(config, issue)}\n`
-        );
-    }
-};
-
-interface UnblockArgs {
-    ref: string;
-    blocker: string;
-    json?: boolean;
-}
-
-export const unblockCommand: CommandModule<{}, UnblockArgs> = {
+export const unblockCommand = blockerCommand({
     command: "unblock <ref> <blocker>",
     describe: "Remove a blocker from an issue",
-    builder: (yargs) =>
-        yargs
-            .positional("ref", {
-                type: "string",
-                demandOption: true,
-                describe: "The blocked issue"
-            })
-            .positional("blocker", {
-                type: "string",
-                demandOption: true,
-                describe: "The blocker to remove"
-            })
-            .option("json", { type: "boolean", describe: "Machine-readable output" }),
-    handler: (args) => {
-        const { config, store } = context();
-        const target = store.resolve(args.ref);
-        const blocker = store.resolve(args.blocker);
-
-        const issue = store.unblock(target.id, blocker.id);
-
-        if (args.json === true) {
-            emitJson(issueJson(issue));
-            return;
-        }
-
-        process.stdout.write(
-            `${ok(`${paintId(issue.id)} no longer blocked by ${paintId(blocker.id)}`)}\n` +
-                `${issueLine(config, issue)}\n`
-        );
-    }
-};
+    blockerDescribe: "The blocker to remove",
+    apply: (store, id, blocker) => store.unblock(id, blocker),
+    said: (issueId, blockerId) => `${paintId(issueId)} no longer blocked by ${paintId(blockerId)}`
+});
 
 interface ReadyArgs {
     assignee?: string;
@@ -114,17 +106,7 @@ export const readyCommand: CommandModule<{}, ReadyArgs> = {
 
         let selected = args.blocked === true ? store.blocked() : store.ready();
 
-        if (args.assignee !== undefined) {
-            const needle = args.assignee.toLowerCase();
-            selected = selected.filter((issue) => issue.assignee?.toLowerCase() === needle);
-        }
-
-        if (args.label !== undefined) {
-            const needle = args.label.toLowerCase();
-            selected = selected.filter((issue) =>
-                (issue.labels ?? []).some((label) => label.toLowerCase() === needle)
-            );
-        }
+        selected = filterIssues(selected, { label: args.label, assignee: args.assignee });
 
         if (args.json === true) {
             emitJson({

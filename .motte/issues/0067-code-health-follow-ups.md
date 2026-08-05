@@ -1,10 +1,10 @@
 ---
 id: 67
 title: Code health follow-ups
-state: In Progress
+state: Done
 labels: [health]
 created: 2026-07-30T14:39:51Z
-updated: 2026-08-04T21:27:23Z
+updated: 2026-08-05T13:25:29Z
 ---
 
 ## Description
@@ -59,3 +59,7 @@ a testing gap, not a structural one.
 ### 2026-08-04T21:27:23Z — claude (agent)
 
 Reopened rather than detaching #0074. This epic exists to hold the follow-ups from the health audit, and #0074 is one — so the truthful state is that it still has open work, not that it is done and something unrelated happens to point at it. Closes when #0074 lands.
+
+### 2026-08-05T13:25:29Z — claude (agent)
+
+Closing for real this time. #0074 was the last open child — the duplicated filter logic between motte list, motte ready and the MCP read tools is now one predicate in core, and fallow reports one clone group left, the pre-existing config/serialize safeParse pair the epic always said would remain. Duplication 0.66% → 0.099%.

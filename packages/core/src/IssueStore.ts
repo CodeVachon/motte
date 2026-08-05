@@ -445,12 +445,7 @@ export class IssueStore {
 
     addNote(id: number, body: string, author: AuthorOptions | Author = {}): Issue {
         const existing = this.require(id);
-        const resolved: Author =
-            "type" in author && "name" in author && typeof author.name === "string"
-                ? (author as Author)
-                : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
-
-        const note: Note = { at: timestamp(), author: resolved, body: body.trim() };
+        const note = this.noteFrom(body, author);
         const next: Issue = {
             ...existing,
             notes: [...existing.notes, note],
@@ -479,16 +474,10 @@ export class IssueStore {
             throw new Error(`#${newId} is already in use`);
         }
 
-        const resolved: Author =
-            "type" in author && "name" in author && typeof author.name === "string"
-                ? (author as Author)
-                : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
-
-        const note: Note = {
-            at: timestamp(),
-            author: resolved,
-            body: `Renumbered from #${padId(existing.id)}, which two files had claimed.`
-        };
+        const note = this.noteFrom(
+            `Renumbered from #${padId(existing.id)}, which two files had claimed.`,
+            author
+        );
 
         const next: Issue = {
             ...existing,
@@ -524,6 +513,23 @@ export class IssueStore {
     }
 
     // --------------------------------------------------------------- internals
+
+    /**
+     * A note, with its author resolved.
+     *
+     * Shared because it was not: `renumberFile` arrived with its own copy of the same nine lines, which
+     * fallow caught as a clone group in the file it was added to. An already-resolved `Author` is passed
+     * straight through — that is how the MCP server attributes a note to the agent rather than to the git
+     * user — and anything else goes through `resolveAuthor`.
+     */
+    private noteFrom(body: string, author: AuthorOptions | Author): Note {
+        const resolved: Author =
+            "type" in author && "name" in author && typeof author.name === "string"
+                ? (author as Author)
+                : resolveAuthor({ ...(author as AuthorOptions), cwd: this.config.root });
+
+        return { at: timestamp(), author: resolved, body: body.trim() };
+    }
 
     private assertNoDependencyCycle(id: number, blockedBy: number[]): void {
         const issues = this.all();

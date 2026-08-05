@@ -144,6 +144,8 @@ export {
 } from "./watch.js";
 export { publishedSchemas, SCHEMA_BASE, type PublishedSchema } from "./schema/json.js";
 
+export { filterIssues, matchesFilter, type FilterOptions, type IssueFilter } from "./filter.js";
+
 export {
     duplicateIds,
     planRenumber,

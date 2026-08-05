@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs";
 import {
     buildTree,
+    filterIssues,
     flattenTree,
     isReady,
     isBlocked,
@@ -57,27 +58,19 @@ export const listCommand: CommandModule<{}, ListArgs> = {
         const all = store.all();
         let issues = all;
 
-        if (args.state !== undefined) {
-            const needle = args.state.toLowerCase();
-            issues = issues.filter((issue) => issue.state.toLowerCase().startsWith(needle));
-        }
-
-        if (args.parent !== undefined) {
-            const parent = store.resolve(args.parent);
-            issues = issues.filter((issue) => issue.parent === parent.id);
-        }
-
-        if (args.assignee !== undefined) {
-            const needle = args.assignee.toLowerCase();
-            issues = issues.filter((issue) => issue.assignee?.toLowerCase() === needle);
-        }
-
-        if (args.label !== undefined) {
-            const needle = args.label.toLowerCase();
-            issues = issues.filter((issue) =>
-                (issue.labels ?? []).some((label) => label.toLowerCase() === needle)
-            );
-        }
+        // Prefix matching on state, because this one is typed by a person: `--state don` finds Done.
+        issues = filterIssues(
+            issues,
+            {
+                state: args.state,
+                label: args.label,
+                assignee: args.assignee,
+                // Resolved here rather than in core, which does not know how to turn a title fragment
+                // into an id.
+                parent: args.parent === undefined ? undefined : store.resolve(args.parent).id
+            },
+            { stateMatch: "prefix" }
+        );
 
         if (args.open === true) {
             issues = issues.filter((issue) => {
