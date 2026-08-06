@@ -1,8 +1,76 @@
 # Changelog
 
 Everything below 1.0 shipped as a pre-release, because the documentation site and the schema URLs
-every `.motte.config.json` points at did not exist yet. Both are live, and 1.0.0 is the first full
+every `.motte.config.json` points at did not exist yet. Both are live, and 1.0.0 was the first full
 release.
+
+## 1.1.0
+
+The release about several agents at once, and about arriving with a backlog you already have.
+
+1.0.0 made the tool complete. This one makes it usable by more than one worker in more than one
+repository: picking work without colliding, finding the reasoning in it, folding the duplicates that
+parallel work creates, and watching all of it happen.
+
+### Added
+
+- **`motte next` and `motte claim`.** `ready` gives every startable issue, which means choosing
+  arbitrarily; `next` returns the one to pick up and says why — what it unblocks, how close it is to a
+  leaf, how long it has waited — and leaves out anything somebody else holds. `claim` is the other
+  half: assign and start in one step, refusing when another agent already has it. The refusal is the
+  point. Two agents both taking #0042 used to mean the second write won, the first agent's work was
+  orphaned, and the record showed one name.
+- **`motte find`**, and the same search in the web UI. `list` filters frontmatter and a ref matches a
+  title, which left descriptions, plans and notes reachable only with `grep` — the half of the record
+  with the reasoning in it, and the reason the notes are worth writing. A hit says where it was, so
+  the answer is readable without opening the file.
+- **Issues linked to the code that came out of them.** `motte show` lists the commits whose messages
+  mention the issue, `motte log` interleaves them with the transitions and notes, and
+  `motte install --hooks` installs a `prepare-commit-msg` hook that stamps the issue you have claimed
+  so the convention holds by itself. `Refs: #0042` rather than a bare `#0042`, because git strips
+  lines beginning with `#` and a bare reference would silently vanish from an interactive commit.
+- **`motte merge`**, for the same work filed twice. Ids come from a directory scan, so two agents
+  produce duplicates for the same reason two branches mint the same number: nobody is coordinating.
+  `renumber` already repaired the id collision; nothing repaired the content one. Notes, children,
+  blockers and labels move to the survivor, and the duplicate's own description and plan become a note
+  on it — "these two are the same issue" is a judgement about the work, not permission to delete
+  somebody's writing. The number that went leaves a tombstone, so `motte show 90` still leads
+  somewhere; every other command still refuses it, but now says where it went.
+- **`motte import --github owner/repo`.** Nobody starts with an empty tracker. Titles, bodies, labels,
+  assignees and the original dates come across, comments become notes with their authors and dates, and
+  sub-issues become parent/child so an epic arrives with its children. Closed as _not planned_ lands in
+  a cancelled state where you have one, because that difference is what keeps abandoned work out of the
+  progress numbers. One-way and not a sync; `--dry-run` shows what would be created.
+- **`motte watch --all`**, across every registered project — the same motivation as watching at all,
+  since agents working in parallel are rarely all in one repository. The total on top, a row per
+  project, and every change naming where it came from. Each project is read through its own config, so
+  two projects that name their states differently both come out right.
+- **`motte doctor --fix`**, for the three findings with one obvious repair each: a duplicate id, a
+  filename that disagrees with its frontmatter, and a file that would be rewritten if written back.
+  Everything else `doctor` reports is a judgement call and it says so, rather than letting a list of
+  successful repairs imply the backlog is clean.
+- **`motte install` now detects Cursor, the Gemini CLI and opencode**, alongside Claude Code and the
+  Codex CLI. `--print-config` was the escape hatch for everything else, which is not the same as
+  support: the value is finding what is on the machine and merging into its config without disturbing
+  the servers already there. `merge_issues` is also exposed over MCP, since agents are what file
+  duplicates in the first place.
+
+### Fixed
+
+- **A note body starting with a dash could not be passed at all.** `motte note 42 "--dry-run is the
+safety."` failed with "Not enough non-option arguments": yargs read the body as a flag, and `--` did
+  not help. Text after `--` now works, and the refusal without it teaches the escape instead of saying
+  "Unknown argument". Omitting the body reads it from stdin, which is the right answer for a note worth
+  writing anyway — paragraphs survive, which an argument does not carry comfortably. A bare `-` also
+  looked like it worked and did not: it recorded an empty note and reported success.
+- **The watch dashboard could scroll its own header off the screen.** Only the change stream was
+  trimmed to the window, so a summary taller than it — eight projects with work in flight, or one
+  project with thirty started issues — overflowed and did exactly what the trimming existed to prevent.
+  Both halves are cut to fit now. Found alongside it: with no room left for the stream, `slice(-0)`
+  printed the entire history instead of none of it.
+- **An imported GitHub body using motte's own `##` headings** could turn part of somebody's text into
+  real notes, move text into the plan, or — with `## Notes` inside a code fence — produce a file motte
+  itself refused to parse. Imported headings are demoted a level.
 
 ## 1.0.0
 
