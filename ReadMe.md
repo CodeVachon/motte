@@ -77,8 +77,10 @@ motte ready                             # what can be picked up now
 motte status --epics
 ```
 
-`init` also wires up the agents it finds on the machine and writes motte's section of `AGENTS.md`, so a
-new project is one command rather than two. Pass `--no-agents` to skip that.
+At an interactive terminal, `init` lets you choose the agent integrations to write, with detected agents
+preselected. In scripts and pipes it keeps the previous behaviour: it wires detected agents and writes
+motte's section of `AGENTS.md`. Pass repeatable `--agent` to select targets without a prompt, or
+`--no-agents` to skip all agent setup.
 
 Commit `.motte.config.json` and `.motte/` — the backlog is the point.
 
@@ -535,8 +537,10 @@ motte install --dry-run     # see what it would write first
 motte mcp --print-config    # or paste the snippet yourself
 ```
 
-`motte init` does this for you; `motte install` is for a project created before it did, or for wiring up
-an agent installed later. `--hooks` additionally installs the commit hook described above.
+`motte init` does this for you and, when interactive, offers a selector with detected agents preselected.
+Use repeatable `motte init --agent <name>` for the same explicit choice in automation. `motte install` is
+for a project created before it did, or for wiring up an agent installed later. `--hooks` additionally
+installs the commit hook described above.
 
 Five agents are detected and configured, each in its own file and its own shape:
 

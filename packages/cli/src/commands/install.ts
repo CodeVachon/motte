@@ -56,7 +56,7 @@ export const installCommand: CommandModule<{}, InstallArgs> = {
         const scope = (args.scope ?? "project") as Scope;
         const plan = planWiring({
             scope,
-            agent: args.agent,
+            ...(args.agent === undefined ? {} : { agents: [args.agent] }),
             withoutInstructions: args.instructions === false,
             withHooks: args.hooks === true
         });

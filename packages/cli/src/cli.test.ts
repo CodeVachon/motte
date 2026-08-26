@@ -84,6 +84,36 @@ describe("init", RETRY, () => {
             expect(wiring.mcpServers.motte).toEqual({ command: "motte", args: ["mcp"] });
         });
 
+        it("wires only the explicit, repeatable --agent selection", async () => {
+            const root = project();
+
+            const run = await motte(root, [
+                "init",
+                "--name",
+                "Test",
+                "--agent",
+                "claude-code",
+                "--agent",
+                "opencode"
+            ]);
+
+            expect(run.code).toBe(0);
+            expect(existsSync(join(root, ".mcp.json"))).toBe(true);
+            expect(existsSync(join(root, "opencode.json"))).toBe(true);
+            expect(existsSync(join(root, ".cursor", "mcp.json"))).toBe(false);
+            expect(existsSync(join(root, "AGENTS.md"))).toBe(true);
+        });
+
+        it("refuses contradictory --agent and --no-agents flags before creating a project", async () => {
+            const root = project();
+
+            const run = await motte(root, ["init", "--agent", "cursor", "--no-agents"]);
+
+            expect(run.code).toBe(1);
+            expect(run.stderr).toMatch(/cannot be used with --no-agents/);
+            expect(existsSync(join(root, ".motte.config.json"))).toBe(false);
+        });
+
         /** The instructions go in whether or not an agent is configured here: a clone may have one. */
         it("writes the motte section of AGENTS.md", async () => {
             const root = project();

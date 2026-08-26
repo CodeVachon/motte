@@ -54,6 +54,13 @@ interface Target {
     merge: (existing: string | undefined, path: string) => MergeResult;
 }
 
+/** The selection-safe part of an agent descriptor, for commands that present targets to a person. */
+export interface AgentTarget {
+    id: AgentId;
+    label: string;
+    detected: boolean;
+}
+
 /** Looks present if its config directory exists, or its command is on the PATH. */
 function presence(...names: string[]): () => boolean {
     return () =>
@@ -122,6 +129,20 @@ const TARGETS: Target[] = [
 
 /** Every agent `--agent` accepts, so the command's choices cannot drift from the table. */
 export const AGENT_IDS = TARGETS.map((target) => target.id);
+
+/**
+ * The targets a caller may offer explicitly, with detection evaluated once for its initial selection.
+ *
+ * Keep this derived from TARGETS: a new integration must otherwise be added in two places before `init`
+ * can offer it, which is exactly the drift this table was introduced to prevent.
+ */
+export function agentTargets(): AgentTarget[] {
+    return TARGETS.map((target) => ({
+        id: target.id,
+        label: target.label,
+        detected: target.detected()
+    }));
+}
 
 /** Where each agent was looked for, for the message when nothing was detected. */
 export function detectionSummary(): string {
@@ -336,8 +357,8 @@ function hookAction(root: string): Action {
 
 export interface PlanOptions {
     scope: Scope;
-    /** Only this agent. Undefined means every detected one. */
-    agent?: string | undefined;
+    /** Only these agents. Undefined means every detected one. */
+    agents?: readonly string[] | undefined;
     /** Skip the AGENTS.md block. */
     withoutInstructions?: boolean;
     /** Also install the prepare-commit-msg hook. Opt-in: a hook runs on everybody's commits. */
@@ -353,14 +374,20 @@ export interface WiringPlan {
 /**
  * Work out what to write.
  *
- * An explicitly named `--agent` is taken at face value rather than detected: asking for something that
- * is not installed yet is a reasonable thing to do when setting a machine up.
+ * Explicitly selected agents are taken at face value rather than detected: asking for something that is
+ * not installed yet is a reasonable thing to do when setting a machine up.
  */
 export function planWiring(options: PlanOptions): WiringPlan {
+    const requested = options.agents;
+    const unknown = requested?.filter((id) => !AGENT_IDS.includes(id as AgentId)) ?? [];
+    if (unknown.length > 0) {
+        throw new AgentConfigError(`unknown agent target: ${unknown.join(", ")}`);
+    }
+
     const wanted = TARGETS.filter(
-        (target) => options.agent === undefined || target.id === options.agent
+        (target) => requested === undefined || requested.includes(target.id)
     );
-    const present = wanted.filter((target) => options.agent !== undefined || target.detected());
+    const present = wanted.filter((target) => requested !== undefined || target.detected());
     const actions: Action[] = [];
 
     for (const target of present) {
