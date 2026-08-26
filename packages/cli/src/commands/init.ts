@@ -4,7 +4,9 @@ import { basename, join, relative, resolve } from "node:path";
 import { CONFIG_FILENAME, DEFAULT_STATES } from "@motte/core";
 import { context } from "../context.js";
 import { AgentConfigError } from "../install/agents.js";
-import { applyAction, home, planWiring } from "../install/wiring.js";
+import type { AgentId } from "../install/record.js";
+import { AGENT_IDS, agentTargets, applyAction, home, planWiring } from "../install/wiring.js";
+import { chooseAgentTargets } from "../ui/agentSelector.js";
 import { dim, ok, warn } from "../ui/format.js";
 
 const SCHEMA_URL = "https://codevachon.github.io/motte/schema/config.json";
@@ -14,6 +16,7 @@ interface InitArgs {
     name?: string;
     force?: boolean;
     agents?: boolean;
+    agent?: string[];
 }
 
 /**
@@ -40,13 +43,27 @@ function displayPath(root: string, path: string): string {
     return path.startsWith(dir) ? `~${path.slice(dir.length)}` : path;
 }
 
-function wireAgents(root: string): void {
+function isInteractive(): boolean {
+    return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+async function selectedAgents(args: InitArgs): Promise<AgentId[] | null | undefined> {
+    if (args.agent !== undefined) return args.agent as AgentId[];
+    if (!isInteractive()) return undefined;
+    return chooseAgentTargets(agentTargets());
+}
+
+function wireAgents(root: string, agents: AgentId[] | undefined): void {
     const out = process.stdout;
 
     try {
         // The root is passed rather than discovered: `motte init <dir>` may be scaffolding somewhere
         // other than the working directory.
-        const plan = planWiring({ scope: "project", root });
+        const plan = planWiring({
+            scope: "project",
+            root,
+            ...(agents === undefined ? {} : { agents })
+        });
 
         for (const action of plan.actions) {
             const result = applyAction(action);
@@ -62,7 +79,11 @@ function wireAgents(root: string): void {
 
         // The instructions are written whether or not an agent was found, so this is how "nothing was
         // detected" looks. Worth saying, because the absence is otherwise indistinguishable from success.
-        if (plan.actions.every((action) => action.agent === "agents-md")) {
+        if (agents?.length === 0) {
+            out.write(
+                `${dim("  No agent integrations selected; wrote the shared AGENTS.md guidance.")}\n`
+            );
+        } else if (plan.actions.every((action) => action.agent === "agents-md")) {
             out.write(
                 `${dim("  No agent detected here — `motte install --agent claude-code` wires one up anyway.")}\n`
             );
@@ -91,8 +112,14 @@ export const initCommand: CommandModule<{}, InitArgs> = {
                 type: "boolean",
                 default: true,
                 describe: "Wire up detected agents and write AGENTS.md (--no-agents to skip)"
+            })
+            .option("agent", {
+                type: "array",
+                string: true,
+                choices: AGENT_IDS,
+                describe: "Agent to wire (repeatable; skips the interactive selector)"
             }),
-    handler: (args) => {
+    handler: async (args) => {
         const root = resolve(args.dir ?? process.cwd());
         const configPath = join(root, CONFIG_FILENAME);
 
@@ -102,6 +129,10 @@ export const initCommand: CommandModule<{}, InitArgs> = {
             );
             process.exitCode = 1;
             return;
+        }
+
+        if (args.agents === false && args.agent !== undefined) {
+            throw new AgentConfigError("--agent cannot be used with --no-agents");
         }
 
         const issuesDir = ".motte/issues";
@@ -122,7 +153,14 @@ export const initCommand: CommandModule<{}, InitArgs> = {
 
         // After the config exists, because the wiring finds the project the same way every other command
         // does — by looking for that file.
-        if (args.agents !== false) wireAgents(root);
+        if (args.agents !== false) {
+            const selected = await selectedAgents(args);
+            if (selected === null) {
+                out.write(`${dim("Agent setup cancelled; the project itself is ready.")}\n`);
+            } else {
+                wireAgents(root, selected);
+            }
+        }
 
         // Opening the project it just created is also what registers it, so `motte projects` knows about a
         // project from the moment it exists rather than from the next command run inside it.

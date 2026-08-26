@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { initialised, motte } from "../testing/cli.js";
-import { AGENT_IDS } from "./wiring.js";
+import { AGENT_IDS, agentTargets } from "./wiring.js";
 
 /**
  * The agent targets, against real files on disk.
@@ -84,6 +84,14 @@ function put(path: string, content: string): void {
 describe("agent targets", () => {
     it("are all offered by --agent", () => {
         expect(AGENT_IDS).toEqual(["claude-code", "codex", "cursor", "gemini", "opencode"]);
+    });
+
+    it("derives selector choices from the same target table", () => {
+        const targets = agentTargets();
+
+        expect(targets.map((target) => target.id)).toEqual(AGENT_IDS);
+        expect(targets.every((target) => target.label.length > 0)).toBe(true);
+        expect(targets.every((target) => typeof target.detected === "boolean")).toBe(true);
     });
 
     /**
