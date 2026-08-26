@@ -51,6 +51,7 @@ describe("issueJson", () => {
             "blockedBy",
             "created",
             "description",
+            "fields",
             "file",
             "id",
             "labels",

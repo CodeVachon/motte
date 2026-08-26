@@ -1,11 +1,13 @@
 import { parse as parseYaml } from "yaml";
 import {
     FrontmatterSchema,
+    validateIssueFields,
     type Frontmatter,
     type Issue,
     type Note,
     type UnknownSection
 } from "./schema/issue.js";
+import type { IssueField } from "./schema/config.js";
 
 /** Em dash (U+2014) — the delimiter in a note heading. Not a hyphen. */
 const NOTE_DELIMITER = "—";
@@ -76,7 +78,7 @@ function emitFlowScalar(value: string): string {
     return isPlainScalarSafe(value, true) ? value : JSON.stringify(value);
 }
 
-function emitFrontmatter(issue: Issue): string {
+function emitFrontmatter(issue: Issue, issueFields: readonly IssueField[]): string {
     const lines: string[] = [];
 
     for (const field of FIELD_ORDER) {
@@ -98,6 +100,17 @@ function emitFrontmatter(issue: Issue): string {
             lines.push(`${field}: ${value}`);
         } else {
             lines.push(`${field}: ${emitScalar(String(value))}`);
+        }
+    }
+
+    for (const field of issueFields) {
+        const value = issue.fields?.[field.key];
+        if (value === undefined) continue;
+
+        if (typeof value === "boolean" || typeof value === "number") {
+            lines.push(`${field.key}: ${value}`);
+        } else {
+            lines.push(`${field.key}: ${emitScalar(value)}`);
         }
     }
 
@@ -179,8 +192,9 @@ function parseNotes(body: string, filePath?: string): Note[] {
  */
 function splitFrontmatter(
     text: string,
-    filePath?: string
-): { frontmatter: Frontmatter; body: string } {
+    filePath?: string,
+    issueFields: readonly IssueField[] = []
+): { frontmatter: Frontmatter; fields: Record<string, string | number | boolean>; body: string } {
     const fence = FRONTMATTER_FENCE.exec(text);
     if (!fence) {
         throw new IssueParseError("missing YAML frontmatter delimited by `---`", filePath);
@@ -206,7 +220,38 @@ function splitFrontmatter(
         throw new IssueParseError(`invalid frontmatter — ${detail}`, filePath);
     }
 
-    return { frontmatter: parsed.data, body: text.slice(fence[0].length) };
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new IssueParseError("invalid frontmatter — (root): expected an object", filePath);
+    }
+
+    const record = raw as Record<string, unknown>;
+    const known = new Set([
+        ...Object.keys(FrontmatterSchema.shape),
+        ...issueFields.map((field) => field.key)
+    ]);
+    const unknown = Object.keys(record).filter((key) => !known.has(key));
+    if (unknown.length > 0) {
+        throw new IssueParseError(
+            `invalid frontmatter — ${unknown.map((key) => `${key}: unknown issue field`).join("; ")}`,
+            filePath
+        );
+    }
+
+    let fields: Record<string, string | number | boolean>;
+    try {
+        fields = validateIssueFields(
+            issueFields,
+            Object.fromEntries(issueFields.map((field) => [field.key, record[field.key]])),
+            { requireRequired: true }
+        );
+    } catch (error) {
+        throw new IssueParseError(
+            `invalid frontmatter — ${error instanceof Error ? error.message : String(error)}`,
+            filePath
+        );
+    }
+
+    return { frontmatter: parsed.data, fields, body: text.slice(fence[0].length) };
 }
 
 /**
@@ -216,12 +261,20 @@ function splitFrontmatter(
  * a file rather than all of it. Cost is independent of body size — that is the property the
  * completion path depends on, and there is a test pinning it.
  */
-export function parseFrontmatter(text: string, filePath?: string): Frontmatter {
-    return splitFrontmatter(text, filePath).frontmatter;
+export function parseFrontmatter(
+    text: string,
+    filePath?: string,
+    issueFields: readonly IssueField[] = []
+): Frontmatter {
+    return splitFrontmatter(text, filePath, issueFields).frontmatter;
 }
 
-export function parseIssueFile(text: string, filePath?: string): Issue {
-    const { frontmatter, body } = splitFrontmatter(text, filePath);
+export function parseIssueFile(
+    text: string,
+    filePath?: string,
+    issueFields: readonly IssueField[] = []
+): Issue {
+    const { frontmatter, fields, body } = splitFrontmatter(text, filePath, issueFields);
     const parsed = { data: frontmatter };
     const { preamble, sections } = splitSections(body);
 
@@ -259,6 +312,7 @@ export function parseIssueFile(text: string, filePath?: string): Issue {
 
     return {
         ...parsed.data,
+        ...(Object.keys(fields).length === 0 ? {} : { fields }),
         description,
         plan,
         notes,
@@ -271,8 +325,8 @@ export function formatNote(note: Note): string {
     return `### ${note.at} ${NOTE_DELIMITER} ${note.author.name} (${note.author.type})\n\n${note.body}\n`;
 }
 
-export function formatIssueFile(issue: Issue): string {
-    const parts: string[] = [`---\n${emitFrontmatter(issue)}\n---\n`];
+export function formatIssueFile(issue: Issue, issueFields: readonly IssueField[] = []): string {
+    const parts: string[] = [`---\n${emitFrontmatter(issue, issueFields)}\n---\n`];
 
     const emitUnknown = (after: UnknownSection["after"]) => {
         for (const section of issue.unknownSections) {

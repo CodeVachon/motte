@@ -20,7 +20,13 @@ export function registerWriteTools(server: McpServer, tools: ToolContext): void 
                 parent: z.number().int().optional(),
                 assignee: z.string().optional(),
                 labels: z.array(z.string()).optional(),
-                blockedBy: z.array(z.number().int()).optional()
+                blockedBy: z.array(z.number().int()).optional(),
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                    .optional()
+                    .describe(
+                        "Configured custom frontmatter fields; use status_report to discover definitions"
+                    )
             }
         },
         guard(
@@ -33,6 +39,7 @@ export function registerWriteTools(server: McpServer, tools: ToolContext): void 
                 assignee?: string;
                 labels?: string[];
                 blockedBy?: number[];
+                fields?: Record<string, string | number | boolean>;
             }) => {
                 const { config, store } = open();
                 const issue = store.create(args);
@@ -56,7 +63,11 @@ export function registerWriteTools(server: McpServer, tools: ToolContext): void 
                 state: z.string().optional(),
                 assignee: z.string().nullable().optional(),
                 parent: z.number().int().nullable().optional(),
-                labels: z.array(z.string()).optional()
+                labels: z.array(z.string()).optional(),
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+                    .optional()
+                    .describe("Configured custom frontmatter fields; null clears an optional field")
             }
         },
         guard((args: { ref: number | string } & Record<string, unknown>) => {

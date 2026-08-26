@@ -510,6 +510,20 @@ an open one with nothing left in it never reports finished.
     { "name": "Blocked", "category": "started" },
     { "name": "Done", "category": "completed" },
     { "name": "Cancelled", "category": "cancelled" }
+  ],
+  "issueFields": [
+    {
+      "key": "customer",
+      "description": "The customer requesting the work",
+      "type": "text",
+      "isRequired": true
+    },
+    {
+      "key": "referenceUrl",
+      "description": "Link to the originating request",
+      "type": "url",
+      "isRequired": false
+    }
   ]
 }
 ```
@@ -518,6 +532,20 @@ States are yours to name. The `category` on each is what makes progress reports 
 hardcoding names — rename `Done` to `Shipped` and the numbers still come out right. Cancelled work
 leaves the denominator entirely, so abandoning an issue does not permanently cap a project below
 100%.
+
+`issueFields` adds typed, top-level YAML frontmatter keys to every issue. The supported types are
+`text`, `url`, `number`, `boolean`, and `date` (`YYYY-MM-DD`). Required fields are enforced when an
+issue is created or edited as a whole; `motte add` prompts for them in a terminal, while scripts can
+pass repeatable `--field key=value` flags. Use the same flag to filter work or scope progress reports:
+
+```bash
+motte list --field customer=Sears
+motte status --field customer=Sears
+motte edit 42 --field referenceUrl=https://example.com/request/42
+```
+
+`motte doctor` reports a missing required field, a mistyped value, or an unknown frontmatter key with
+the issue file that needs attention.
 
 The `$schema` URL is live, so an editor autocompletes and validates the file as you type it:
 

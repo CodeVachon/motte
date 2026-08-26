@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs";
 import { filterIssues, openBlockers, type Issue, type IssueStore } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
 import { dim, issueLine, ok, paintId } from "../ui/format.js";
+import { parseFieldArguments } from "../fields.js";
 
 interface BlockerArgs {
     ref: string;
@@ -80,6 +81,7 @@ export const unblockCommand = blockerCommand({
 interface ReadyArgs {
     assignee?: string;
     label?: string;
+    field?: string[];
     json?: boolean;
     blocked?: boolean;
 }
@@ -95,6 +97,11 @@ export const readyCommand: CommandModule<{}, ReadyArgs> = {
                 type: "string",
                 describe: "Only issues with this label"
             })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe: "Only issues whose configured field equals key=value (repeatable)"
+            })
             .option("blocked", {
                 type: "boolean",
                 describe: "Show what is waiting instead, and on what"
@@ -106,7 +113,12 @@ export const readyCommand: CommandModule<{}, ReadyArgs> = {
 
         let selected = args.blocked === true ? store.blocked() : store.ready();
 
-        selected = filterIssues(selected, { label: args.label, assignee: args.assignee });
+        const fields = parseFieldArguments(config, args.field);
+        selected = filterIssues(selected, {
+            label: args.label,
+            assignee: args.assignee,
+            ...(fields === undefined ? {} : { fields })
+        });
 
         if (args.json === true) {
             emitJson({

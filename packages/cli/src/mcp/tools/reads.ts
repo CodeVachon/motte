@@ -11,11 +11,20 @@ import {
     ready,
     searchIssues,
     subtreeReport,
+    validateIssueFields,
+    type Config,
     type Issue,
     type TreeNode
 } from "@motte/core";
 import type { ToolContext } from "../toolContext.js";
 import { fullIssueJson, issueJson, text } from "../shape.js";
+
+function fieldFilter(
+    config: Config,
+    fields: Record<string, string | number | boolean> | undefined
+) {
+    return fields === undefined ? undefined : validateIssueFields(config.issueFields ?? [], fields);
+}
 
 /** The read-only tools. `ready_issues` comes first because it is the one an agent should reach for. */
 export function registerReadTools(server: McpServer, tools: ToolContext): void {
@@ -76,31 +85,36 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 "Start here rather than with list_issues.",
             inputSchema: {
                 label: z.string().optional().describe("Only issues carrying this label"),
-                assignee: z.string().optional().describe("Only issues assigned to this person")
+                assignee: z.string().optional().describe("Only issues assigned to this person"),
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                    .optional()
+                    .describe("Exact configured frontmatter field matches")
             },
             annotations: { readOnlyHint: true }
         },
-        guard((args: { label?: string; assignee?: string }) => {
-            const { config, store } = open();
-            const issues = store.all();
-            let selected = ready(config, issues);
+        guard(
+            (args: {
+                label?: string;
+                assignee?: string;
+                fields?: Record<string, string | number | boolean>;
+            }) => {
+                const { config, store } = open();
+                const issues = store.all();
+                let selected = ready(config, issues);
 
-            if (args.label !== undefined) {
-                const needle = args.label.toLowerCase();
-                selected = selected.filter((issue) =>
-                    (issue.labels ?? []).some((label) => label.toLowerCase() === needle)
-                );
-            }
-            if (args.assignee !== undefined) {
-                const needle = args.assignee.toLowerCase();
-                selected = selected.filter((issue) => issue.assignee?.toLowerCase() === needle);
-            }
+                selected = filterIssues(selected, {
+                    label: args.label,
+                    assignee: args.assignee,
+                    fields: fieldFilter(config, args.fields)
+                });
 
-            return text({
-                count: selected.length,
-                issues: selected.map((issue) => issueJson(config, issues, issue))
-            });
-        })
+                return text({
+                    count: selected.length,
+                    issues: selected.map((issue) => issueJson(config, issues, issue))
+                });
+            }
+        )
     );
 
     server.registerTool(
@@ -113,6 +127,10 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 state: z.string().optional().describe("Exact state name"),
                 label: z.string().optional(),
                 assignee: z.string().optional(),
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                    .optional()
+                    .describe("Exact configured frontmatter field matches"),
                 parent: z.number().int().optional().describe("Only children of this issue id"),
                 blocked: z.boolean().optional().describe("Only issues waiting on an open blocker")
             },
@@ -123,6 +141,7 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 state?: string;
                 label?: string;
                 assignee?: string;
+                fields?: Record<string, string | number | boolean>;
                 parent?: number;
                 blocked?: boolean;
             }) => {
@@ -136,7 +155,8 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                     state: args.state,
                     label: args.label,
                     assignee: args.assignee,
-                    parent: args.parent
+                    parent: args.parent,
+                    fields: fieldFilter(config, args.fields)
                 });
                 if (args.blocked === true) {
                     selected = selected.filter(
@@ -171,6 +191,10 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 state: z.string().optional(),
                 label: z.string().optional(),
                 assignee: z.string().optional(),
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                    .optional()
+                    .describe("Exact configured frontmatter field matches"),
                 hits: z
                     .number()
                     .int()
@@ -186,13 +210,19 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
                 state?: string;
                 label?: string;
                 assignee?: string;
+                fields?: Record<string, string | number | boolean>;
                 hits?: number;
             }) => {
                 const { config, store } = open();
                 const issues = store.all();
 
                 const results = searchIssues(issues, args.query, {
-                    filter: { state: args.state, label: args.label, assignee: args.assignee },
+                    filter: {
+                        state: args.state,
+                        label: args.label,
+                        assignee: args.assignee,
+                        fields: fieldFilter(config, args.fields)
+                    },
                     ...(args.hits === undefined ? {} : { maxHits: args.hits })
                 });
 
@@ -268,16 +298,24 @@ export function registerReadTools(server: McpServer, tools: ToolContext): void {
         {
             title: "Project status",
             description: "Progress for the project and for each issue that has children.",
-            inputSchema: {},
+            inputSchema: {
+                fields: z
+                    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+                    .optional()
+                    .describe(
+                        "Scope the progress report to exact configured frontmatter field matches"
+                    )
+            },
             annotations: { readOnlyHint: true }
         },
-        guard(() => {
+        guard((args: { fields?: Record<string, string | number | boolean> }) => {
             const { config, store } = open();
-            const issues = store.all();
+            const issues = filterIssues(store.all(), { fields: fieldFilter(config, args.fields) });
             const report = projectReport(config, issues);
 
             return text({
                 name: report.name,
+                issueFields: config.issueFields ?? [],
                 percentComplete: report.percentComplete,
                 total: report.total,
                 completed: report.completed,

@@ -12,12 +12,14 @@ import {
 import { context, emitJson, issueJson } from "../context.js";
 import { openProjects } from "../projects/across.js";
 import { dim, heading, issueLine, treeLines, warn } from "../ui/format.js";
+import { parseFieldArguments } from "../fields.js";
 
 interface ListArgs {
     state?: string;
     parent?: string;
     assignee?: string;
     label?: string;
+    field?: string[];
     open?: boolean;
     ready?: boolean;
     blocked?: boolean;
@@ -44,6 +46,11 @@ export const listCommand: CommandModule<{}, ListArgs> = {
                 type: "string",
                 describe: "Only issues with this label"
             })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe: "Only issues whose configured field equals key=value (repeatable)"
+            })
             .option("open", {
                 type: "boolean",
                 describe: "Hide completed and cancelled issues"
@@ -63,12 +70,18 @@ export const listCommand: CommandModule<{}, ListArgs> = {
         // Before `context()`, because the point of `--all` is asking from anywhere — including from a
         // directory that is not a motte project at all.
         if (args.all === true) {
+            if (args.field !== undefined) {
+                throw new Error(
+                    "--field is available within one project; projects may declare different fields"
+                );
+            }
             listAcross(args);
             return;
         }
 
         const { config, store } = context();
         const all = store.all();
+        const fields = parseFieldArguments(config, args.field);
         let issues = all;
 
         // Prefix matching on state, because this one is typed by a person: `--state don` finds Done.
@@ -80,7 +93,8 @@ export const listCommand: CommandModule<{}, ListArgs> = {
                 assignee: args.assignee,
                 // Resolved here rather than in core, which does not know how to turn a title fragment
                 // into an id.
-                parent: args.parent === undefined ? undefined : store.resolve(args.parent).id
+                parent: args.parent === undefined ? undefined : store.resolve(args.parent).id,
+                ...(fields === undefined ? {} : { fields })
             },
             { stateMatch: "prefix" }
         );

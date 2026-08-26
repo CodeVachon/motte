@@ -9,10 +9,12 @@ import {
     projectReport,
     progressBar,
     ready,
+    filterIssues,
     type Config,
     type Issue
 } from "@motte/core";
 import { context, emitJson, issueJson } from "../context.js";
+import { parseFieldArguments } from "../fields.js";
 import { openProjects, totals } from "../projects/across.js";
 import {
     dim,
@@ -28,6 +30,7 @@ interface StatusArgs {
     json?: boolean;
     epics?: boolean;
     all?: boolean;
+    field?: string[];
 }
 
 export const statusCommand: CommandModule<{}, StatusArgs> = {
@@ -40,17 +43,28 @@ export const statusCommand: CommandModule<{}, StatusArgs> = {
                 type: "boolean",
                 describe: "Every project on this machine, not just this one"
             })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe: "Scope the report to issues whose configured field equals key=value"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         // Deliberately before `context()`: this is the one report that answers a question from outside any
         // project, and requiring one to ask it would defeat the point.
         if (args.all === true) {
+            if (args.field !== undefined) {
+                throw new Error(
+                    "--field is available within one project; projects may declare different fields"
+                );
+            }
             renderAcross(args.json === true);
             return;
         }
 
         const { config, store } = context();
-        const issues = store.all();
+        const fields = parseFieldArguments(config, args.field);
+        const issues = filterIssues(store.all(), fields === undefined ? {} : { fields });
         const report = projectReport(config, issues);
 
         if (args.json === true) {

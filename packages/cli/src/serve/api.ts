@@ -146,7 +146,8 @@ function configBody(config: Config) {
         states: config.states,
         defaultState: config.defaultState,
         root: config.root,
-        events: config.events
+        events: config.events,
+        issueFields: config.issueFields ?? []
     };
 }
 
