@@ -1,10 +1,10 @@
 ---
 id: 98
 title: "init: choose agent targets interactively"
-state: In Progress
+state: Done
 labels: [cli, agents]
 created: 2026-08-26T16:09:18Z
-updated: 2026-08-26T17:55:08Z
+updated: 2026-08-26T17:58:13Z
 ---
 
 ## Description
@@ -26,3 +26,7 @@ Non-interactive runs must remain deterministic: scripts, CI, pipes, and existing
 ### 2026-08-26T17:55:08Z — codex (agent)
 
 Used @clack/prompts behind a both-streams-TTY gate. In a pipe or test harness init keeps its detected-agent default; an empty selection still writes AGENTS.md, while cancellation writes no agent files so Ctrl-C never reads as consent.
+
+### 2026-08-26T17:58:13Z — codex (agent)
+
+Implemented the TTY selector, repeatable --agent path, and shared multi-target wiring planner. Local full and coverage runs still hit the pre-existing opencode uninstall assertion, but GitHub Actions run 32996969597 passed the full test suite and every CI check for d6ef25a.
