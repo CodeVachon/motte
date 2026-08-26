@@ -32,7 +32,91 @@ interface IssueJson {
     assignee: string | null;
     labels: string[];
     blockedBy: number[];
+    fields: Record<string, string | number | boolean>;
 }
+
+describe("configured issue fields", () => {
+    async function configuredProject(): Promise<string> {
+        const root = await initialised();
+        const path = join(root, ".motte.config.json");
+        const config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+        config.issueFields = [
+            {
+                key: "customer",
+                description: "The customer requesting the work",
+                type: "text",
+                isRequired: true
+            },
+            {
+                key: "estimate",
+                description: "Estimated days",
+                type: "number",
+                isRequired: false
+            }
+        ];
+        writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+        return root;
+    }
+
+    it("creates, edits, clears, and filters typed fields", async () => {
+        const root = await configuredProject();
+        const created = (
+            await motte(root, [
+                "add",
+                "Sears request",
+                "--field",
+                "customer=Sears",
+                "--field",
+                "estimate=3",
+                "--json"
+            ])
+        ).json<IssueJson>();
+
+        expect(created.fields).toEqual({ customer: "Sears", estimate: 3 });
+        expect((await motte(root, ["add", "Missing customer"])).stderr).toContain(
+            'required issue field "customer" is missing'
+        );
+
+        const edited = (
+            await motte(root, [
+                "edit",
+                "1",
+                "--field",
+                "customer=Acme",
+                "--field",
+                "estimate=",
+                "--json"
+            ])
+        ).json<IssueJson>();
+        expect(edited.fields).toEqual({ customer: "Acme" });
+        expect(
+            (await motte(root, ["list", "--field", "customer=acme", "--json"])).json<{
+                count: number;
+            }>()
+        ).toMatchObject({ count: 1 });
+        expect(
+            (await motte(root, ["ready", "--field", "customer=Acme", "--json"])).json<{
+                count: number;
+            }>()
+        ).toMatchObject({ count: 1 });
+        expect(
+            (await motte(root, ["status", "--field", "customer=Acme", "--json"])).json<{
+                total: number;
+            }>()
+        ).toMatchObject({ total: 1 });
+    });
+
+    it("lets doctor identify typoed custom frontmatter keys", async () => {
+        const root = await configuredProject();
+        await motte(root, ["add", "Sears request", "--field", "customer=Sears"]);
+        const file = join(root, ".motte", "issues", "0001-sears-request.md");
+        writeFileSync(file, readFileSync(file, "utf8").replace("customer: Sears", "client: Sears"));
+
+        const run = await motte(root, ["doctor"]);
+        expect(run.code).toBe(1);
+        expect(run.stdout + run.stderr).toContain("client: unknown issue field");
+    });
+});
 
 describe("init", RETRY, () => {
     it("writes a config and an issues directory", async () => {

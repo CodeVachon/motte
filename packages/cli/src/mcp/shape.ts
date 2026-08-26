@@ -40,7 +40,8 @@ export function issueJson(config: Config, issues: Issue[], issue: Issue) {
         blockedBy: issue.blockedBy ?? [],
         openBlockers: openBlockers(config, issues, issue).map((blocker) => blocker.id),
         created: issue.created,
-        updated: issue.updated
+        updated: issue.updated,
+        fields: issue.fields ?? {}
     };
 }
 

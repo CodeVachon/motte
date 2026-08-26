@@ -66,3 +66,12 @@ describe("the schema links", () => {
         expect(page).not.toContain('href="/motte/');
     });
 });
+
+describe("configured issue fields", () => {
+    it("introduces typed custom metadata and its CLI filter", () => {
+        expect(page).toContain("Make the issue format yours");
+        expect(page).toContain("customer");
+        expect(page).toContain("referenceUrl");
+        expect(page).toContain("motte status --field customer=Sears");
+    });
+});

@@ -12,6 +12,8 @@ import { context, emitJson, issueJson } from "../context.js";
 import { EditorRejectedError, editInEditor } from "../ui/editor.js";
 import { dim, issueLine, ok, paintId, paintState } from "../ui/format.js";
 import { textArg } from "../ui/textArg.js";
+import { parseFieldArguments } from "../fields.js";
+import { promptIssueFields } from "../ui/customFields.js";
 
 /**
  * Report a created or updated issue.
@@ -52,7 +54,7 @@ function normaliseLabels(values: readonly (string | number)[]): string[] {
  * state, parent and blockers, and bumps `updated` — none of which the user should have to remember.
  */
 function editInteractively(store: IssueStore, config: Config, target: Issue, json: boolean): void {
-    const original = formatIssueFile(target);
+    const original = formatIssueFile(target, config.issueFields ?? []);
 
     const { text, draftPath } = editInEditor({
         content: original,
@@ -74,7 +76,7 @@ function editInteractively(store: IssueStore, config: Config, target: Issue, jso
 
     let edited: Issue;
     try {
-        edited = parseIssueFile(text, draftPath);
+        edited = parseIssueFile(text, draftPath, config.issueFields ?? []);
     } catch (thrown) {
         throw new EditorRejectedError(
             `that is not a valid issue file, so nothing was changed.\n  ${
@@ -125,6 +127,7 @@ interface AddArgs {
     state?: string;
     assignee?: string;
     label?: string[];
+    field?: string[];
     json?: boolean;
 }
 
@@ -152,8 +155,13 @@ export const addCommand: CommandModule<{}, AddArgs> = {
                 string: true,
                 describe: "Label (repeatable, or comma-separated)"
             })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe: "Configured frontmatter field as key=value (repeatable)"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
-    handler: (args) => {
+    handler: async (args) => {
         const { config, store } = context();
         const parent = args.parent === undefined ? undefined : store.resolve(args.parent).id;
 
@@ -164,6 +172,15 @@ export const addCommand: CommandModule<{}, AddArgs> = {
             what: "title",
             usage: "motte add"
         });
+        const prompted =
+            args.field === undefined
+                ? await promptIssueFields(config.issueFields ?? [])
+                : undefined;
+        if (prompted === null) {
+            process.stdout.write(`${dim("issue creation cancelled")}\n`);
+            return;
+        }
+        const fields = parseFieldArguments(config, args.field) ?? prompted;
 
         const issue = store.create({
             title,
@@ -172,7 +189,8 @@ export const addCommand: CommandModule<{}, AddArgs> = {
             ...(args.plan === undefined ? {} : { plan: args.plan }),
             ...(args.state === undefined ? {} : { state: args.state }),
             ...(args.assignee === undefined ? {} : { assignee: args.assignee }),
-            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) })
+            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) }),
+            ...(fields === undefined ? {} : { fields })
         });
 
         reportMutation(config, issue, "created", args.json === true);
@@ -322,6 +340,7 @@ interface EditArgs {
     assignee?: string;
     parent?: string;
     label?: string[];
+    field?: string[];
     json?: boolean;
 }
 
@@ -355,6 +374,12 @@ export const editCommand: CommandModule<{}, EditArgs> = {
                 string: true,
                 describe: "Replace all labels (repeatable, or comma-separated)"
             })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe:
+                    "Set configured frontmatter field as key=value; key= clears an optional field"
+            })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
         const { config, store } = context();
@@ -369,7 +394,8 @@ export const editCommand: CommandModule<{}, EditArgs> = {
             args.state,
             args.assignee,
             args.parent,
-            args.label
+            args.label,
+            args.field
         ];
         if (flags.every((flag) => flag === undefined)) {
             editInteractively(store, config, target, args.json === true);
@@ -389,6 +415,7 @@ export const editCommand: CommandModule<{}, EditArgs> = {
                 : args.assignee.toLowerCase() === "none"
                   ? null
                   : args.assignee;
+        const fields = parseFieldArguments(config, args.field, { allowClear: true });
 
         const issue = store.update(target.id, {
             ...(args.title === undefined ? {} : { title: args.title }),
@@ -397,7 +424,8 @@ export const editCommand: CommandModule<{}, EditArgs> = {
             ...(args.state === undefined ? {} : { state: args.state }),
             ...(parent === undefined ? {} : { parent }),
             ...(assignee === undefined ? {} : { assignee }),
-            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) })
+            ...(args.label === undefined ? {} : { labels: normaliseLabels(args.label) }),
+            ...(fields === undefined ? {} : { fields })
         });
 
         reportMutation(config, issue, "updated", args.json === true);

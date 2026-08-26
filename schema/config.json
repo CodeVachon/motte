@@ -35,6 +35,23 @@
       "default": { "enabled": true },
       "type": "object",
       "properties": { "enabled": { "default": true, "type": "boolean" } }
+    },
+    "issueFields": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "description": { "type": "string", "minLength": 1 },
+          "type": {
+            "type": "string",
+            "enum": ["text", "url", "number", "boolean", "date"]
+          },
+          "isRequired": { "type": "boolean" }
+        },
+        "required": ["key", "description", "type", "isRequired"]
+      }
     }
   },
   "$id": "https://codevachon.github.io/motte/schema/config.json",

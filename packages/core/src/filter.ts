@@ -1,4 +1,4 @@
-import type { Issue } from "./schema/issue.js";
+import type { Issue, IssueFieldValue } from "./schema/issue.js";
 
 /**
  * The everyday filters, in one place.
@@ -18,6 +18,8 @@ export interface IssueFilter {
     assignee?: string | undefined;
     /** An id, already resolved — this layer does not know how to turn a title fragment into one. */
     parent?: number | undefined;
+    /** Exact matches for project-configured frontmatter fields. */
+    fields?: Record<string, IssueFieldValue> | undefined;
 }
 
 export interface FilterOptions {
@@ -54,6 +56,17 @@ export function matchesFilter(
     }
 
     if (filter.parent !== undefined && issue.parent !== filter.parent) return false;
+
+    if (filter.fields !== undefined) {
+        for (const [key, value] of Object.entries(filter.fields)) {
+            const candidate = issue.fields?.[key];
+            if (typeof value === "string" && typeof candidate === "string") {
+                if (candidate.toLowerCase() !== value.toLowerCase()) return false;
+            } else if (candidate !== value) {
+                return false;
+            }
+        }
+    }
 
     return true;
 }

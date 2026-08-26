@@ -23,7 +23,14 @@ import { readIssueRef, type IssueRef } from "./frontmatter.js";
 import { mergedBody, planMerge, type MergePlan } from "./merge.js";
 import { formatIssueFile, IssueParseError, parseIssueFile } from "./serialize.js";
 import { issueFilename, padId, slugify } from "./slug.js";
-import type { Author, Issue, IssuePatch, NewIssue, Note } from "./schema/issue.js";
+import {
+    validateIssueFields,
+    type Author,
+    type Issue,
+    type IssuePatch,
+    type NewIssue,
+    type Note
+} from "./schema/issue.js";
 
 export class IssueNotFoundError extends Error {
     constructor(readonly ref: string | number) {
@@ -144,7 +151,11 @@ export class IssueStore {
             }
 
             try {
-                const issue = parseIssueFile(readFileSync(filePath, "utf8"), filePath);
+                const issue = parseIssueFile(
+                    readFileSync(filePath, "utf8"),
+                    filePath,
+                    this.config.issueFields ?? []
+                );
                 this.cache.set(filePath, { mtimeMs, issue });
                 issues.push(issue);
             } catch (error) {
@@ -187,7 +198,10 @@ export class IssueStore {
             if (issue.filePath === undefined) return false;
 
             try {
-                return formatIssueFile(issue) !== readFileSync(issue.filePath, "utf8");
+                return (
+                    formatIssueFile(issue, this.config.issueFields ?? []) !==
+                    readFileSync(issue.filePath, "utf8")
+                );
             } catch {
                 // Vanished between listing and reading. `brokenFiles` is where read errors belong.
                 return false;
@@ -312,6 +326,9 @@ export class IssueStore {
         if (input.parent !== undefined) this.require(input.parent);
         for (const blocker of input.blockedBy ?? []) this.require(blocker);
 
+        const fields = validateIssueFields(this.config.issueFields ?? [], input.fields ?? {}, {
+            requireRequired: true
+        });
         const now = timestamp();
         const issue: Issue = {
             id: this.nextId(),
@@ -332,7 +349,8 @@ export class IssueStore {
             // Sorted, because a note stream out of date order reads as a bug. GitHub hands comments over
             // in order already; a hand-built import need not.
             notes: [...(input.notes ?? [])].sort((a, b) => a.at.localeCompare(b.at)),
-            unknownSections: []
+            unknownSections: [],
+            ...(Object.keys(fields).length === 0 ? {} : { fields })
         };
 
         return this.write(issue, issueFilename(issue.id, issue.title));
@@ -391,6 +409,19 @@ export class IssueStore {
             }
         }
 
+        if (patch.fields !== undefined) {
+            const fields = { ...(next.fields ?? {}) } as Record<string, string | number | boolean>;
+            for (const [key, value] of Object.entries(patch.fields)) {
+                if (value === null) delete fields[key];
+                else fields[key] = value;
+            }
+            const validated = validateIssueFields(this.config.issueFields ?? [], fields, {
+                requireRequired: true
+            });
+            if (Object.keys(validated).length === 0) delete next.fields;
+            else next.fields = validated;
+        }
+
         next.updated = timestamp();
 
         // Rename when the title changed so the filename keeps matching, but keep the id prefix.
@@ -428,6 +459,12 @@ export class IssueStore {
             state,
             updated: timestamp()
         };
+
+        const fields = validateIssueFields(this.config.issueFields ?? [], next.fields ?? {}, {
+            requireRequired: true
+        });
+        if (Object.keys(fields).length === 0) delete next.fields;
+        else next.fields = fields;
 
         if (next.blockedBy !== undefined && next.blockedBy.length === 0) delete next.blockedBy;
         if (next.labels !== undefined && next.labels.length === 0) delete next.labels;
@@ -588,10 +625,10 @@ export class IssueStore {
         options: { dryRun?: boolean } = {}
     ): { path: string; renamed: boolean; rewritten: boolean } {
         const raw = readFileSync(filePath, "utf8");
-        const issue = parseIssueFile(raw, filePath);
+        const issue = parseIssueFile(raw, filePath, this.config.issueFields ?? []);
 
         const target = join(this.config.issuesPath, issueFilename(issue.id, issue.title));
-        const formatted = formatIssueFile(issue);
+        const formatted = formatIssueFile(issue, this.config.issueFields ?? []);
 
         const renamed = target !== filePath;
         const rewritten = formatted !== raw;
@@ -632,7 +669,11 @@ export class IssueStore {
      * itself carries the explanation for anyone who later finds the old number in a commit message.
      */
     renumberFile(filePath: string, newId: number, author: AuthorOptions | Author = {}): Issue {
-        const existing = parseIssueFile(readFileSync(filePath, "utf8"), filePath);
+        const existing = parseIssueFile(
+            readFileSync(filePath, "utf8"),
+            filePath,
+            this.config.issueFields ?? []
+        );
 
         if (this.all().some((issue) => issue.id === newId)) {
             throw new Error(`#${newId} is already in use`);
@@ -653,7 +694,7 @@ export class IssueStore {
         const target = join(this.config.issuesPath, issueFilename(newId, next.title));
         const temp = `${target}.${process.pid}.tmp`;
 
-        writeFileSync(temp, formatIssueFile(next), "utf8");
+        writeFileSync(temp, formatIssueFile(next, this.config.issueFields ?? []), "utf8");
         renameSync(temp, target);
 
         const written: Issue = { ...next, filePath: target };
@@ -848,7 +889,7 @@ export class IssueStore {
         const filePath = join(this.config.issuesPath, filename);
         const temp = `${filePath}.${process.pid}.tmp`;
 
-        writeFileSync(temp, formatIssueFile(issue), "utf8");
+        writeFileSync(temp, formatIssueFile(issue, this.config.issueFields ?? []), "utf8");
         renameSync(temp, filePath);
 
         const written: Issue = { ...issue, filePath };

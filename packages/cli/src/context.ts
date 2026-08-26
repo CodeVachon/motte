@@ -91,6 +91,7 @@ export function issueJson(issue: {
     description: string;
     plan: string;
     notes: { at: string; author: { name: string; type: string }; body: string }[];
+    fields?: Record<string, string | number | boolean> | undefined;
     filePath?: string | undefined;
 }) {
     return {
@@ -106,6 +107,7 @@ export function issueJson(issue: {
         description: issue.description,
         plan: issue.plan,
         notes: issue.notes,
+        fields: issue.fields ?? {},
         file: issue.filePath ?? null
     };
 }

@@ -25,6 +25,7 @@ export function issue(overrides: Partial<IssueResponse> = {}): IssueResponse {
         description: "Describe.",
         plan: "",
         notes: [],
+        fields: {},
         file: null,
         ...overrides
     };
@@ -41,6 +42,7 @@ export function config(overrides: Partial<ConfigResponse> = {}): ConfigResponse 
         defaultState: "Todo",
         root: "/tmp/test",
         events: { enabled: true },
+        issueFields: [],
         ...overrides
     };
 }

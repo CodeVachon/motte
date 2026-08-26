@@ -38,6 +38,45 @@ export const EventsSchema = z.object({
 
 export type EventsConfig = z.infer<typeof EventsSchema>;
 
+/** The scalar types that a project may add to every issue's YAML frontmatter. */
+export const IssueFieldTypeSchema = z.enum(["text", "url", "number", "boolean", "date"]);
+
+export type IssueFieldType = z.infer<typeof IssueFieldTypeSchema>;
+
+/**
+ * Configured issue metadata. Values live at the top level of each issue's frontmatter so they stay
+ * useful to people and tools that read the Markdown files directly.
+ */
+export const IssueFieldSchema = z.object({
+    key: z
+        .string()
+        .regex(
+            /^[a-z][a-zA-Z0-9]*$/,
+            "must start with a lowercase letter and use letters or digits"
+        ),
+    description: z.string().min(1),
+    type: IssueFieldTypeSchema,
+    isRequired: z.boolean()
+});
+
+export type IssueField = z.infer<typeof IssueFieldSchema>;
+
+/** Names owned by the issue format or Markdown body, never project-defined metadata. */
+export const ISSUE_FIELD_RESERVED_KEYS = [
+    "id",
+    "title",
+    "state",
+    "parent",
+    "assignee",
+    "labels",
+    "blockedBy",
+    "created",
+    "updated",
+    "description",
+    "plan",
+    "notes"
+] as const;
+
 export const ConfigSchema = z
     .object({
         $schema: z.string().optional(),
@@ -46,7 +85,8 @@ export const ConfigSchema = z
         issuesDir: z.string().min(1).default(".motte/issues"),
         states: z.array(StateSchema).min(1).default(DEFAULT_STATES),
         defaultState: z.string().min(1).optional(),
-        events: EventsSchema.default({ enabled: true })
+        events: EventsSchema.default({ enabled: true }),
+        issueFields: z.array(IssueFieldSchema).default([])
     })
     .superRefine((config, ctx) => {
         const names = config.states.map((state) => state.name);
@@ -67,6 +107,26 @@ export const ConfigSchema = z
                 message: `"${config.defaultState}" is not one of the configured states: ${names.join(", ")}`
             });
         }
+
+        const keys = config.issueFields.map((field) => field.key);
+        const duplicateKeys = keys.filter((key, index) => keys.indexOf(key) !== index);
+        if (duplicateKeys.length > 0) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["issueFields"],
+                message: `duplicate issue field keys: ${[...new Set(duplicateKeys)].join(", ")}`
+            });
+        }
+
+        for (const [index, field] of config.issueFields.entries()) {
+            if (ISSUE_FIELD_RESERVED_KEYS.includes(field.key as never)) {
+                ctx.addIssue({
+                    code: "custom",
+                    path: ["issueFields", index, "key"],
+                    message: `"${field.key}" is reserved by the issue format`
+                });
+            }
+        }
     });
 
 export type RawConfig = z.infer<typeof ConfigSchema>;
@@ -84,4 +144,6 @@ export interface Config {
     /** Absolute path to the issues directory. */
     issuesPath: string;
     events: EventsConfig;
+    /** Always present when loaded from disk; optional for backwards-compatible programmatic configs. */
+    issueFields?: IssueField[];
 }

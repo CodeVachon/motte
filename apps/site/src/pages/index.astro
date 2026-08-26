@@ -29,6 +29,8 @@ parent: 7
 assignee: atlas
 labels: [core]
 blockedBy: [11]
+customer: Sears
+referenceUrl: https://example.com/requests/42
 created: 2026-07-29T14:02:11Z
 updated: 2026-07-29T15:31:04Z
 ---
@@ -198,6 +200,22 @@ const surfaces = [
                     All three go through the same core, so the CLI, the browser and an agent cannot
                     drift apart — and a change made in any of them lands in the event log under the
                     name that made it.
+                </p>
+            </section>
+
+            <section>
+                <h2>Make the issue format yours</h2>
+                <p>
+                    Add typed fields such as <code>customer</code>, <code>referenceUrl</code>, a
+                    date, a number, or a boolean in <code>.motte.config.json</code>. motte prompts
+                    for them when you create work, validates them in <code>motte doctor</code>, and
+                    lets people and agents filter the backlog with the same vocabulary.
+                </p>
+                <pre><code>{`motte add "Fix the export" --field customer=Sears
+motte status --field customer=Sears`}</code></pre>
+                <p class="fine">
+                    Custom values remain ordinary top-level YAML frontmatter, so they are useful in
+                    a diff even without motte installed.
                 </p>
             </section>
 

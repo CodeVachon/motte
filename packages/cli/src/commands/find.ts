@@ -3,6 +3,7 @@ import { searchIssues, type Config, type Hit, type SearchResult } from "@motte/c
 import { context, emitJson, issueJson } from "../context.js";
 import { openProjects } from "../projects/across.js";
 import { bold, dim, heading, issueLine } from "../ui/format.js";
+import { parseFieldArguments } from "../fields.js";
 
 /**
  * `motte find` — search the bodies.
@@ -17,6 +18,7 @@ interface FindArgs {
     state?: string;
     label?: string;
     assignee?: string;
+    field?: string[];
     hits?: number;
     all?: boolean;
     json?: boolean;
@@ -75,6 +77,11 @@ export const findCommand: CommandModule<{}, FindArgs> = {
                 describe: "Only issues with this label"
             })
             .option("assignee", { alias: "a", type: "string", describe: "Only this assignee" })
+            .option("field", {
+                type: "array",
+                string: true,
+                describe: "Only issues whose configured field equals key=value (repeatable)"
+            })
             .option("hits", { type: "number", default: 3, describe: "Matching lines per issue" })
             .option("all", {
                 type: "boolean",
@@ -82,19 +89,33 @@ export const findCommand: CommandModule<{}, FindArgs> = {
             })
             .option("json", { type: "boolean", describe: "Machine-readable output" }),
     handler: (args) => {
-        const options = {
-            filter: { state: args.state, label: args.label, assignee: args.assignee },
-            maxHits: Math.max(1, args.hits ?? 3)
-        };
-
         // Before `context()`, because searching every project is a question asked from anywhere — including
         // from a directory that is not a project itself.
         if (args.all === true) {
+            if (args.field !== undefined) {
+                throw new Error(
+                    "--field is available within one project; projects may declare different fields"
+                );
+            }
+            const options = {
+                filter: { state: args.state, label: args.label, assignee: args.assignee },
+                maxHits: Math.max(1, args.hits ?? 3)
+            };
             findAcross(args, options);
             return;
         }
 
         const { config, store } = context();
+        const fields = parseFieldArguments(config, args.field);
+        const options = {
+            filter: {
+                state: args.state,
+                label: args.label,
+                assignee: args.assignee,
+                ...(fields === undefined ? {} : { fields })
+            },
+            maxHits: Math.max(1, args.hits ?? 3)
+        };
         const results = searchIssues(store.all(), args.query, options);
 
         if (args.json === true) {

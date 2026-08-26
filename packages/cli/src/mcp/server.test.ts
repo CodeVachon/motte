@@ -41,7 +41,7 @@ async function call(
     return { isError: result.isError === true, text, json: () => JSON.parse(text) };
 }
 
-function project(): string {
+function project(issueFields: unknown[] = []): string {
     const root = mkdtempSync(join(tmpdir(), "motte-mcp-"));
     mkdirSync(join(root, ".motte", "issues"), { recursive: true });
     writeFileSync(
@@ -53,7 +53,8 @@ function project(): string {
                 { name: "In Progress", category: "started" },
                 { name: "Done", category: "completed" },
                 { name: "Cancelled", category: "cancelled" }
-            ]
+            ],
+            issueFields
         })
     );
     return root;
@@ -129,6 +130,39 @@ describe("without a project", () => {
 });
 
 describe("reading", () => {
+    it("creates and scopes agent reports by configured fields", async () => {
+        const root = project([
+            {
+                key: "customer",
+                description: "The requesting customer",
+                type: "text",
+                isRequired: true
+            }
+        ]);
+        const client = await connect(root);
+
+        await call(client, "create_issue", {
+            title: "Sears request",
+            fields: { customer: "Sears" }
+        });
+        await call(client, "create_issue", { title: "Acme request", fields: { customer: "Acme" } });
+
+        const listed = (await call(client, "list_issues", { fields: { customer: "Sears" } })).json<{
+            issues: { fields: Record<string, unknown> }[];
+        }>();
+        expect(listed.issues).toHaveLength(1);
+        expect(listed.issues[0]!.fields).toEqual({ customer: "Sears" });
+
+        const report = (
+            await call(client, "status_report", { fields: { customer: "Sears" } })
+        ).json<{
+            total: number;
+            issueFields: { key: string }[];
+        }>();
+        expect(report.total).toBe(1);
+        expect(report.issueFields).toEqual([expect.objectContaining({ key: "customer" })]);
+    });
+
     let root: string;
     let client: Client;
 
@@ -485,6 +519,7 @@ describe("the issue shape agents receive", () => {
             "assignee",
             "blockedBy",
             "created",
+            "fields",
             "id",
             "labels",
             "openBlockers",
@@ -504,6 +539,7 @@ describe("the issue shape agents receive", () => {
             "children",
             "created",
             "description",
+            "fields",
             "id",
             "labels",
             "notes",
