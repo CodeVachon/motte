@@ -441,6 +441,9 @@ describe("reporting", RETRY, () => {
         expect(status.completed).toBe(1);
         expect(status.percentComplete).toBe(50);
         expect(status.ready).toHaveLength(1);
+
+        const rendered = await motte(root, ["status"]);
+        expect(rendered.stdout).toMatch(/total\s+2/);
     });
 
     it("logs the transitions it recorded", async () => {
