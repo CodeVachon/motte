@@ -180,11 +180,12 @@ export function renderStatus(config: Config, issues: Issue[], epics: boolean): v
     out.write(`\n${heading(report.name)}\n\n`);
     out.write(`${progressLine(report)}\n\n`);
 
-    const width = Math.max(...report.byState.map((entry) => entry.state.length));
+    const width = Math.max("total".length, ...report.byState.map((entry) => entry.state.length));
     for (const entry of report.byState) {
         const padding = " ".repeat(width - entry.state.length);
         out.write(`  ${paintState(config, entry.state)}${padding}  ${entry.count}\n`);
     }
+    out.write(`  ${dim("total")}${" ".repeat(width - "total".length)}  ${report.total}\n`);
 
     const readyIssues = ready(config, issues);
     const blockedIssues = blocked(config, issues);

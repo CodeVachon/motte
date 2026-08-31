@@ -4,7 +4,7 @@ title: configurable additional issue frontmatter fields
 state: Done
 labels: [core, cli, mcp, doctor, schema]
 created: 2026-08-26T16:09:18Z
-updated: 2026-08-26T20:27:30Z
+updated: 2026-08-31T13:25:30Z
 ---
 
 ## Description
@@ -33,3 +33,7 @@ Implemented configurable typed issue fields with config/schema validation, front
 ### 2026-08-26T18:30:14Z — codex (agent)
 
 Updated the public landing page to demonstrate typed custom frontmatter and customer-scoped status filtering; added a landing-page regression test.
+
+### 2026-08-31T13:12:26Z — codex (agent)
+
+Added the requested human-readable total issue count to status output; JSON already exposed report.total.
